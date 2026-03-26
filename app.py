@@ -9,6 +9,7 @@ import os
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
 # --- 【更新設定】2分（120秒）ごとに自動リフレッシュ ---
+# これにより、自分が入力をしなくても他人の更新が自動で反映されます
 st.fragment(run_every=120)(lambda: None) 
 
 # 日本時間(JST)の定義
@@ -17,7 +18,12 @@ JST = timezone(timedelta(hours=9))
 # 2. Google Sheets 接続設定
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 設定
+# 3. 入力クリア用のコールバック関数（エラー回避用）
+def clear_input_callback():
+    if "u_name_input" in st.session_state:
+        st.session_state.u_name_input = ""
+
+# 4. 設定
 FILENAME = "office_layout_with_islands.png"
 
 # 座席座標の設定
@@ -54,7 +60,7 @@ df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
 st.sidebar.header("🔍 担当者検索")
-search_query = st.sidebar.text_input("名前を入力")
+search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
 with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
     if not df_now.empty:
@@ -105,7 +111,8 @@ s_id = None
 selected_group = "未選択"
 
 if mode == "新しく座る・移動する":
-    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎")
+    # keyを指定して入力欄を作成
+    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎", key="u_name_input")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
     special_list = sorted([s for s in all_seats if '-' not in s])
@@ -167,7 +174,7 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 【修正】マップの「下」に最終更新情報を表示 ---
+# --- 最終更新情報の表示（マップの下） ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
@@ -185,20 +192,23 @@ if mode == "新しく座る・移動する" and u_name and s_id:
         if current_occupant != u_name:
             st.sidebar.error(f"❌ {s_id} は {current_occupant} さんが使用中です。")
         else:
-            if st.sidebar.button("着席情報を更新する", use_container_width=True):
+            # on_clickでリセット関数を呼ぶ（エラー回避）
+            if st.sidebar.button("着席情報を更新する", use_container_width=True, on_click=clear_input_callback):
                 new_df = df_now[df_now["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
                 st.rerun()
     elif not existing_user.empty:
         old_seat = existing_user.iloc[0]["座席番号"]
-        if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+        # on_clickでリセット関数を呼ぶ（エラー回避）
+        if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary", on_click=clear_input_callback):
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
             st.rerun()
     else:
-        if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
+        # on_clickでリセット関数を呼ぶ（エラー回避）
+        if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary", on_click=clear_input_callback):
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([df_now, new_row], ignore_index=True))
             st.rerun()
