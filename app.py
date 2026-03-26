@@ -70,8 +70,8 @@ if os.path.exists(FILENAME):
             map_html += f'<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:9px; background:rgba(0,0,0,0.6); color:white; padding:1px 3px; border-radius:2px; transform:translate(-50%, -120%); white-space:nowrap;">{label}</div>'
             
     map_html += '</div>'
-    st.markdown(map_html, unsafe_allow_allow_html=True)
-
+    st.markdown(map_html, unsafe_allow_html=True)
+    
 # --- 登録処理 ---
 st.sidebar.header("📝 在席登録")
 u_name = st.sidebar.text_input("👤 名前")
