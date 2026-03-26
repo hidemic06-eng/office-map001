@@ -14,7 +14,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_data():
     try:
         # スプレッドシートの「シート1」を読み込む（ttl=0でキャッシュ無効化）
-        return conn.read(worksheet="シート1", ttl=0)
+        return conn.read(worksheet="Sheet1", ttl=0)
     except Exception as e:
         # エラーが出た場合は空のデータフレームを返す
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -93,7 +93,7 @@ if st.sidebar.button("チェックイン", use_container_width=True, type="prima
         updated_df = pd.concat([current_df, new_row], ignore_index=True)
         
         # スプレッドシートを更新
-        conn.update(worksheet="シート1", data=updated_df)
+        conn.update(worksheet="Sheet1", data=updated_df)
         st.success(f"{u_name}さん、登録しました！")
         st.rerun()
 
@@ -102,5 +102,5 @@ if st.sidebar.button("退席（リセット）"):
         current_df = load_data()
         if not current_df.empty and "担当者" in current_df.columns:
             updated_df = current_df[current_df["担当者"] != u_name]
-            conn.update(worksheet="シート1", data=updated_df)
+            conn.update(worksheet="Sheet1", data=updated_df)
             st.rerun()
