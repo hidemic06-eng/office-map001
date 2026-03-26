@@ -82,15 +82,20 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS
+# アニメーションCSS（色をゴールドで固定し、影を追加）
 st.markdown("""
     <style>
     @keyframes blink {
-        0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); }
-        50% { opacity: 0.5; transform: translate(-20%, -20%) scale(1.3); }
-        100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); }
+        0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }
+        50% { opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); box-shadow: 0 0 15px #FFD700; }
+        100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }
     }
-    .blinking-dot { animation: blink 0.8s infinite !important; }
+    .blinking-dot { 
+        animation: blink 0.8s infinite !important; 
+        background-color: #FFD700 !important; 
+        border: 1.5px solid #FFFFFF !important;
+        z-index: 100 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -124,7 +129,7 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画（ドットを大きくし、少し右下へ調整） ---
+# --- マップ描画 ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
@@ -140,20 +145,24 @@ if os.path.exists(FILENAME):
                        (selected_group == seat_id)
 
         dot_class = "blinking-dot" if is_highlight else ""
-        dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
+        # ハイライト時はクラス側で色を強制するため、ここでは通常時の色を判定
+        dot_color = "#FF4B4B" if label else "#28a745"
         
-        # サイズを1.2%に拡大、translate(-20%, -20%)で右下へオフセット
         size_pct = "1.2%"
         map_html += f'''<div class="{dot_class}" style="position: absolute; 
                         width:{size_pct}; aspect-ratio: 1 / 1; border-radius: 50%; 
                         top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
-                        transform:translate(-20%, -20%); z-index:10; box-shadow: 1px 1px 3px rgba(0,0,0,0.3);"></div>'''
+                        transform:translate(-20%, -20%); z-index:10;"></div>'''
         
         if label or is_highlight:
             display_text = label if label else seat_id
+            # ラベルの色も、ハイライト時は少し目立たせる
+            label_bg = "rgba(255, 215, 0, 0.9)" if is_highlight else "rgba(0,0,0,0.7)"
+            label_txt = "black" if is_highlight else "white"
+            
             map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 9px); 
-                            background:rgba(0,0,0,0.7); color:white; padding:1px 3px; border-radius:2px; 
-                            transform:translate(-20%, -140%); white-space:nowrap; z-index:15;">{display_text}</div>'''
+                            background:{label_bg}; color:{label_txt}; padding:1px 3px; border-radius:2px; 
+                            transform:translate(-20%, -140%); white-space:nowrap; z-index:110; font-weight:bold;">{display_text}</div>'''
                         
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
@@ -164,13 +173,13 @@ if not df_now.empty:
     l_time = str(latest['更新日時']).split(" ")[-1]
     st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん)")
 
-# --- 登録・移動・退席ロジック（エラー回避済） ---
+# --- 登録・移動・退席ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
     now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
     occupant = df_now[df_now["座席番号"] == s_id]
     existing_user = df_now[df_now["担当者"] == u_name]
 
-    if not occupant.empty and occupant.iloc[0]["担当er"] != u_name:
+    if not occupant.empty and occupant.iloc[0]["担当者"] != u_name:
         st.sidebar.error(f"❌ {s_id} は使用中です。")
     else:
         btn_label = "🚀 座席を移動する" if not existing_user.empty else "✅ この席に座る"
@@ -186,7 +195,7 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部：QRコード（軽量なWebAPI版） ---
+# --- サイドバー最下部：QRコード ---
 st.sidebar.markdown("---")
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(APP_URL)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
