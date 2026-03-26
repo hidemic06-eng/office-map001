@@ -20,58 +20,49 @@ FILENAME = "office_layout_with_islands.png"
 def generate_coords():
     coords = {}
     
-    # 【追加】デスクとドットの間隔を調整する設定 (gap)
-    # ドットを少し「左」にずらしたい場合は、1.2を小さく（例: 1.0）
-    # ドットを少し「右」にずらしたい場合は、1.2を大きく（例: 1.4）
-    top_gap = 1.2 # デスク中心とドットの間隔 (%単位)
+    # 【微調整ポイント】
+    # 全体を右にずらすために left_base を増やし、
+    # 左右の間隔(top_gap)を調整しました。
+    top_gap = 1.6 # 左右の席の間隔を少し広げました
     
     # 1. A-E島 (12席、左右6席ずつ)
-    # もし島全体を「右」にずらしたい場合は、leftの値を大きく（例: 19.5 -> 19.8）
-    islands_top = {"A": 19.5, "B": 24.5, "C": 29.5, "D": 34.5, "E": 39.5}
+    # 起点を 19.5 -> 20.0 に変更
+    islands_top = {"A": 20.0, "B": 25.0, "C": 30.0, "D": 35.0, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(6): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - top_gap}
+            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(6): # 右側
-            coords[f"{label}-{i+7}"] = {"top": 28.0 + i*6.5, "left": left_base + top_gap}
+            coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
     # 2. F-K島 (10席、左右5席ずつ)
-    islands_mid = {"F": 51.5, "G": 56.5, "H": 61.5, "I": 66.5, "J": 73.5, "K": 78.5}
+    # 起点を 51.5 -> 51.8 に変更
+    islands_mid = {"F": 51.8, "G": 57.0, "H": 62.0, "I": 67.2, "J": 74.0, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(5): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - top_gap}
+            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(5): # 右側
-            coords[f"{label}-{i+6}"] = {"top": 28.0 + i*6.5, "left": left_base + top_gap}
+            coords[f"{label}-{i+6}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
     # 3. M-R島 (8席、左右4席ずつ)
-    islands_bottom = {"M": 51.5, "N": 56.5, "O": 61.5, "P": 67.5, "Q": 73.5, "R": 80.5}
+    islands_bottom = {"M": 51.8, "N": 57.0, "O": 62.0, "P": 68.2, "Q": 74.2, "R": 81.2}
     for label, left_base in islands_bottom.items():
         for i in range(4): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 66.0 + i*6.5, "left": left_base - top_gap}
+            coords[f"{label}-{i+1}"] = {"top": 66.5 + i*6.6, "left": left_base - top_gap}
         for i in range(4): # 右側
-            coords[f"{label}-{i+5}"] = {"top": 66.0 + i*6.5, "left": left_base + top_gap}
-            
-    # （L島、S島、その他は今のままでOK）
-    # ...以下のコードは変更なし...
-    # L島: 5席 (片側)
+            coords[f"{label}-{i+5}"] = {"top": 66.5 + i*6.6, "left": left_base + top_gap}
+
+    # L島 (83.5 -> 84.2)
     for i in range(5):
-        coords[f"L-{i+1}"] = {"top": 28.0 + i*6.5, "left": 83.5}
+        coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 84.2}
 
-    # M-R島: 各8席 (左右4席ずつ)
-    islands_bottom = {"M": 51.5, "N": 56.5, "O": 61.5, "P": 67.5, "Q": 73.5, "R": 80.5}
-    for label, left_base in islands_bottom.items():
-        for i in range(4): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 66.0 + i*6.5, "left": left_base - 1.2}
-        for i in range(4): # 右側
-            coords[f"{label}-{i+5}"] = {"top": 66.0 + i*6.5, "left": left_base + 1.2}
-
-    # S島: 4席 (片側)
+    # S島 (85.5 -> 86.2)
     for i in range(4):
-        coords[f"S-{i+1}"] = {"top": 66.0 + i*6.5, "left": 85.5}
+        coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 86.2}
 
     # その他エリア
-    coords["支社長席"] = {"top": 23.0, "left": 11.5}
+    coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5):
-        coords[f"集中ブース-{i+1}"] = {"top": 72.0, "left": 3.0 + i*2.1}
+        coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
 
     return coords
 
