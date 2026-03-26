@@ -52,6 +52,61 @@ def load_data():
 
 df_now = load_data()
 
+# --- メイン画面表示 ---
+# カスタムCSSを追加して背景と枠をかっこよくする
+st.markdown("""
+    <style>
+    /* 全体の背景を深い紺色のグラデーションに */
+    .stApp {
+        background: radial-gradient(circle at center, #1e2227 0%, #111418 100%);
+    }
+    
+    /* 座席図の周りに光る枠線（サイバー風）を追加 */
+    .main-container {
+        border: 1px solid rgba(0, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.02);
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    }
+    
+    /* タイトルの文字を少し光らせる */
+    .stTitle {
+        color: #ffffff;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        font-family: 'Helvetica Neue', sans-serif;
+        letter-spacing: 1.5px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("📍 事務所リアルタイム座席図")
+
+# 以前の「ばっちり」なコードをそのまま流用
+if os.path.exists(FILENAME):
+    with open(FILENAME, "rb") as img_file:
+        b64_string = base64.b64encode(img_file.read()).decode()
+    
+    # 枠で囲むために <div> を一つ追加
+    html_content = f'<div class="main-container">'
+    html_content += f'<div style="position: relative; width: 100%;">'
+    html_content += f'<img src="data:image/png;base64,{b64_string}" style="width: 100%; opacity: 0.8; display: block; border-radius: 4px;">'
+    
+    for seat_id, pos in seat_coords.items():
+        occ = df_now[df_now["座席番号"] == seat_id]
+        bg_color = "#FF4B4B" if not occ.empty else "#28a745"
+        label = occ.iloc[0]["担当者"] if not occ.empty else ""
+        
+        # 元のシンプルなドットとラベル
+        html_content += f'<div style="position: absolute; width:10px; height:10px; border-radius: 50%; top:{pos["top"]}%; left:{pos["left"]}%; background-color:{bg_color}; border:1px solid white; transform: translate(-50%, -50%); z-index:5;"></div>'
+        
+        if label:
+            html_content += f'<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:9px; background:rgba(0,0,0,0.8); color:white; padding:1px 4px; border-radius:2px; transform:translate(-50%, -130%); white-space:nowrap; z-index:10; border: 0.5px solid #444;">{label}</div>'
+            
+    html_content += '</div></div>' # 閉じタグを忘れずに
+    st.markdown(html_content, unsafe_allow_html=True)
+
+
 st.title("📍 事務所リアルタイム座席図")
 
 if os.path.exists(FILENAME):
