@@ -1,29 +1,21 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import base64
 import os
-import qrcode
-from io import BytesIO
-import time
 
-# 1. ページ設定
-st.set_page_config(layout="wide", page_title="オフィス座席マップ", initial_sidebar_state="expanded")
+# ページ設定
+st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
-# --- 【重要】日本時間を強制設定 ---
-JST = timezone(timedelta(hours=9))
-
-# 2. Google Sheets 接続
+# --- Google Sheets 接続設定 ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 定数・座標設定
+# --- 設定 ---
 FILENAME = "office_layout_with_islands.png"
-APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-@st.cache_data
-def get_coords():
-    # (中略: 以前と同じ座標ロジックを保持)
+# 座席座標の設定
+def generate_coords():
     coords = {}
     top_gap = 1.6 
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
@@ -43,123 +35,178 @@ def get_coords():
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
     return coords
+    
+seat_coords = generate_coords()
 
-seat_coords = get_coords()
-
-# 4. データ読み込み
 def load_data():
     try:
-        return conn.read(worksheet="Sheet1", ttl=0)
+        return conn.read(worksheet="Sheet1", ttl="0")
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
 
 df_now = load_data()
 
-# --- CSS設定（スマホ対応強化） ---
+# --- サイドバー：検索・リスト ---
+st.sidebar.header("🔍 担当者検索")
+search_query = st.sidebar.text_input("名前を入力（マップが点滅します）")
+
+with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
+    if not df_now.empty:
+        df_list = df_now.copy()
+        df_list["島"] = df_list["座席番号"].apply(lambda x: x.split('-')[0])
+        islands = sorted(df_list["島"].unique())
+        for island in islands:
+            st.markdown(f"**🔹 {island}島・エリア**")
+            members = df_list[df_list["島"] == island].sort_values("座席番号")
+            cols = st.columns(2)
+            for i, (_, row) in enumerate(members.iterrows()):
+                with cols[i % 2]:
+                    st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
+            st.markdown("---")
+    else:
+        st.write("着席中のメンバーはいません")
+
+st.sidebar.markdown("---")
+
+# --- メイン画面表示 ---
+st.title("📍 事務所リアルタイム座席図")
+
+# 点滅アニメーションCSS
 st.markdown("""
     <style>
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-    .blinking-dot { animation: blink 1s infinite; z-index: 30; }
-    .main .block-container { padding-top: 0.5rem; }
-    
-    /* 更新情報ボックス：スマホではシンプルに表示 */
-    .info-box {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 8px;
-        border-left: 5px solid #FF4B4B;
-        margin-bottom: 10px;
+    @keyframes blink {
+        0% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+        50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.4); }
+        100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
     }
-    @media (min-width: 768px) {
-        .info-box { position: absolute; top: 10px; right: 20px; width: 220px; z-index: 100; }
+    .blinking-dot {
+        animation: blink 0.8s infinite;
+        z-index: 30 !important;
+        border: 2px solid #FFD700 !important;
+        box-shadow: 0 0 15px #FFD700;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 5. 【修正】秒刻みで動くカウントダウン & 日本時間表示
-# st.emptyを使って、この部分だけを書き換えます
-info_placeholder = st.empty()
+# 入退室・移動管理のUIを先に定義（selected_groupをマップ表示に反映させるため）
+st.sidebar.header("📝 入退室・移動")
+current_members = df_now["担当者"].unique().tolist()
+mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
-with info_placeholder.container():
-    if not df_now.empty:
-        # 最新の行を取得
-        latest_row = df_now.sort_values("更新日時", ascending=False).iloc[0]
-        # 保存された時間がUTC(9時間前)の場合を考慮し、強制的にJSTへ調整
-        raw_val = latest_row["更新日時"]
-        # 表示側でもHH:MMをしっかり出す
-        display_time = str(raw_val).split(" ")[-1][:5]
-        user_name = latest_row["担当者"]
-        
-        st.markdown(f"""
-            <div class="info-box">
-                <div style="font-size: 0.8em; color: #555;">最終更新: {user_name}さん</div>
-                <div style="font-size: 1.6em; font-weight: bold; color: #FF4B4B;">{display_time}</div>
-                <div style="font-size: 0.75em; color: #888;">🔃 次回更新まであと <span id='cd'>--</span>秒</div>
-            </div>
-        """, unsafe_allow_html=True)
+u_name = ""
+s_id = None
+selected_group = "未選択"
 
-# --- サイドバー ---
-st.sidebar.header("🔍 検索・操作")
-search_query = st.sidebar.text_input("名前検索")
-
-mode = st.sidebar.radio("モード", ["チェックイン", "退席"])
-if mode == "チェックイン":
-    u_name = st.sidebar.text_input("👤 お名前")
+if mode == "新しく座る・移動する":
+    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
-    selected_group = st.sidebar.selectbox("🏝️ エリア", ["未選択"] + island_list + ["支社長席", "集中ブース"])
+    special_list = sorted([s for s in all_seats if '-' not in s])
+    selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list)
     
     if selected_group != "未選択":
-        target_seats = [s for s in all_seats if s.startswith(selected_group)] if selected_group != "集中ブース" else [s for s in all_seats if "集中ブース" in s]
-        s_id = st.sidebar.selectbox("📍 座席番号", target_seats)
-        
-        if st.sidebar.button("確定", use_container_width=True, type="primary"):
-            if u_name:
-                # 【修正】保存時に確実に日本時間を文字列で送る
-                now_jst_str = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
-                new_df = df_now[df_now["担当者"] != u_name].copy()
-                new_row = pd.DataFrame([[now_jst_str, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-                conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
-                st.rerun()
+        if selected_group in special_list:
+            s_id = selected_group
+        else:
+            raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
+            island_seats = sorted(raw_seats, key=lambda x: int(x.split('-')[1]))
+            seat_display_options = []
+            for s in island_seats:
+                occ = df_now[df_now["座席番号"] == s]
+                label = f"{s}（👤 {occ.iloc[0]['担当者']}）" if not occ.empty else f"{s}（✅ 空席）"
+                seat_display_options.append(label)
+            selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
+            s_id = selected_label.split('（')[0]
 
-elif mode == "退席":
-    current_members = df_now["担当者"].unique().tolist()
-    if current_members:
-        target = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
-        if st.sidebar.button("退席確定", use_container_width=True):
-            conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target])
-            st.rerun()
-
-# 6. マップ描画
-st.subheader("📍 座席マップ")
+# --- マップ描画ロジック ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
-    map_html = f'''<div style="position: relative; width:100%;"><img src="data:image/png;base64,{b64_string}" style="width:100%; border-radius:10px;">'''
+    
+    map_html = f'''<div style="position: relative; width:100%;"><img src="data:image/png;base64,{b64_string}" style="width:100%; opacity:0.8;">'''
+    
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
         label = occ.iloc[0]["担当者"] if not occ.empty else ""
-        is_highlight = (search_query and label and search_query in label)
-        dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         
-        map_html += f'''<div class="{"blinking-dot" if is_highlight else ""}" style="position: absolute; width:1.2%; height:1.2%; border-radius: 50%; top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; transform:translate(-50%, -50%); z-index:20;"></div>'''
-        if label or is_highlight:
-            map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.5vw, 10px); background:rgba(0,0,0,0.7); color:white; padding:1px 3px; border-radius:2px; transform:translate(-50%, -150%); white-space:nowrap; z-index:15;">{label if label else seat_id}</div>'''
+        # ハイライト判定：検索にヒットした、またはサイドバーでその「島」が選ばれている
+        is_highlight = False
+        if search_query and label and (search_query in label):
+            is_highlight = True
+        if selected_group != "未選択" and seat_id.startswith(f"{selected_group}-"):
+            is_highlight = True
+        if selected_group == seat_id:
+            is_highlight = True
+
+        # スタイル設定
+        dot_class = "blinking-dot" if is_highlight else ""
+        dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
+        dot_size = "12px" if is_highlight else "8px"
+        z_index = "50" if is_highlight else "10"
+
+        # 座席ドット
+        map_html += f'''<div class="{dot_class}" title="{seat_id}" style="position: absolute; width:{dot_size}; height:{dot_size}; border-radius: 50%; 
+                        top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
+                        transform:translate(-50%, -50%); z-index:{z_index};"></div>'''
+        
+        # ラベル表示（名前があるときは名前、空席でも「常時番号表示」）
+        # 強調時は背景を黄色く、文字を大きくして視認性を上げる
+        display_text = label if label else seat_id
+        label_bg = "rgba(255, 215, 0, 1.0)" if is_highlight else ("rgba(0,0,0,0.7)" if label else "rgba(200,200,200,0.5)")
+        label_color = "black" if is_highlight else "white"
+        font_weight = "bold" if (label or is_highlight) else "normal"
+        font_size = "10px" if is_highlight else "8px"
+        l_z_index = "60" if is_highlight else "15"
+
+        map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:{font_size}; 
+                        background:{label_bg}; color:{label_color}; padding:1px 3px; border-radius:2px; 
+                        transform:translate(-50%, -130%); white-space:nowrap; z-index:{l_z_index}; font-weight:{font_weight};">{display_text}</div>'''
+                        
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# 7. JavaScriptによる「本物のカウントダウン」
-st.components.v1.html(f"""
-    <script>
-    var count = 30;
-    var timer = setInterval(function(){{
-        count--;
-        var el = window.parent.document.getElementById('cd');
-        if(el) el.innerText = count;
-        if(count <= 0){{
-            clearInterval(timer);
-            window.parent.location.reload();
-        }}
-    }}, 1000);
-    </script>
-    """, height=0)
+# --- 登録・移動・退席の実行ロジック ---
+if mode == "新しく座る・移動する" and u_name and s_id:
+    occupant = df_now[df_now["座席番号"] == s_id]
+    existing_user = df_now[df_now["担当者"] == u_name]
+
+    if not occupant.empty:
+        current_occupant = occupant.iloc[0]["担当者"]
+        if current_occupant != u_name:
+            st.sidebar.error(f"❌ {s_id} は {current_occupant} さんが使用中です。")
+        else:
+            st.sidebar.success(f"✅ 現在 {s_id} に着席中です。")
+            if st.sidebar.button("着席情報を更新する", use_container_width=True):
+                new_df = df_now[df_now["担当者"] != u_name].copy()
+                new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                final_df = pd.concat([new_df, new_row], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=final_df)
+                st.success("更新完了！")
+                st.rerun()
+    elif not existing_user.empty:
+        old_seat = existing_user.iloc[0]["座席番号"]
+        st.sidebar.warning(f"現在、{u_name}さんは {old_seat} にいます。")
+        if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+            new_df = df_now[df_now["担当者"] != u_name].copy()
+            new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+            final_df = pd.concat([new_df, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=final_df)
+            st.success("移動完了！")
+            st.rerun()
+    else:
+        if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
+            new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+            final_df = pd.concat([df_now, new_row], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=final_df)
+            st.success("着席完了！")
+            st.rerun()
+
+elif mode == "退席する":
+    if not current_members: st.sidebar.info("着席中の人はいません")
+    else:
+        target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
+        if st.sidebar.button("退席", use_container_width=True):
+            new_df = df_now[df_now["担当者"] != target_name]
+            conn.update(worksheet="Sheet1", data=new_df)
+            st.sidebar.warning(f"{target_name}さんを退席処理しました")
+            st.rerun()
