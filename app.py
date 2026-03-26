@@ -7,7 +7,7 @@ import os
 import qrcode
 from io import BytesIO
 
-# 1. ページ設定（initial_sidebar_state="expanded" を追加して最初からサイドバーを表示）
+# 1. ページ設定（スマホでも最初からサイドバーを開く設定）
 st.set_page_config(
     layout="wide", 
     page_title="オフィス座席マップ",
@@ -21,26 +21,37 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 FILENAME = "office_layout_with_islands.png"
 APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-# 4. 座席座標の生成
+# 4. 座席座標の生成（構文エラーを修正）
 def generate_coords():
     coords = {}
     top_gap = 1.6 
+    
+    # A-E島 (12席)
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
+            
+    # F-K島 (10席)
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
+            
+    # M-R島 (8席) - 【修正済み箇所】
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
         for i in range(8):
-            coords[f"{top_gap}": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
+            coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
+            
+    # L島 & S島
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
+    
+    # 特殊席
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
+    
     return coords
 
 seat_coords = generate_coords()
@@ -54,7 +65,7 @@ def load_data():
 
 df_now = load_data()
 
-# --- サイドバー：検索 ---
+# --- サイドバー：検索・リスト ---
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力（マップが点滅します）")
 
@@ -89,9 +100,8 @@ st.markdown("""
         border: 2px solid #FFD700 !important;
         box-shadow: 0 0 15px #FFD700;
     }
-    /* スマホで見やすくするためにマップの余白を削る */
     .main .block-container {
-        padding-top: 1rem;
+        padding-top: 1.5rem;
         padding-bottom: 1rem;
     }
     </style>
