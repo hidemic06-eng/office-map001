@@ -97,3 +97,20 @@ if st.sidebar.button("チェックイン", use_container_width=True, type="prima
         except Exception as e:
             st.error("書き込みに失敗しました。スプレッドシートの共有設定を確認してください。")
             st.write(e)
+
+# --- 退席処理（既存のチェックインボタンの下に追加） ---
+if st.sidebar.button("退席（チェックアウト）", use_container_width=True):
+    if u_name:
+        # 自分の名前以外のデータだけを残す（＝自分を削除する）
+        new_df = df_now[df_now["担当者"] != u_name]
+        
+        try:
+            # スプレッドシートを上書き更新
+            conn.update(worksheet="Sheet1", data=new_df)
+            st.sidebar.warning(f"{u_name}さん、退席処理をしました。")
+            st.rerun()
+        except Exception as e:
+            st.error("退席処理に失敗しました。")
+            st.write(e)
+    else:
+        st.sidebar.error("名前を入力してください。")
