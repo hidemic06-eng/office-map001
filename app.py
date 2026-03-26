@@ -4,11 +4,15 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import base64
 import os
-import qrcode  # 追加：QRコード生成用
-from io import BytesIO  # 追加：バイナリデータ処理用
+import qrcode
+from io import BytesIO
 
-# 1. ページ設定
-st.set_page_config(layout="wide", page_title="オフィス座席マップ")
+# 1. ページ設定（initial_sidebar_state="expanded" を追加して最初からサイドバーを表示）
+st.set_page_config(
+    layout="wide", 
+    page_title="オフィス座席マップ",
+    initial_sidebar_state="expanded" 
+)
 
 # 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -21,21 +25,18 @@ APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 def generate_coords():
     coords = {}
     top_gap = 1.6 
-    # A-E島 (12席)
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
-    # F-K島 (10席)
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
-    # M-R島 (8席)
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
         for i in range(8):
-            coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
+            coords[f"{top_gap}": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
@@ -74,7 +75,7 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
 
 st.sidebar.markdown("---")
 
-# --- メイン画面：CSSアニメーション ---
+# --- メイン画面：CSS ---
 st.markdown("""
     <style>
     @keyframes blink {
@@ -88,10 +89,15 @@ st.markdown("""
         border: 2px solid #FFD700 !important;
         box-shadow: 0 0 15px #FFD700;
     }
+    /* スマホで見やすくするためにマップの余白を削る */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📍 事務所リアルタイム座席図")
+st.title("📍 事務所座席図")
 
 # 入退室管理UI
 st.sidebar.header("📝 入退室・移動")
@@ -156,9 +162,9 @@ if mode == "新しく座る・移動する" and u_name and s_id:
     occupant = df_now[df_now["座席番号"] == s_id]
     existing_user = df_now[df_now["担当者"] == u_name]
     if not occupant.empty and occupant.iloc[0]["担当者"] != u_name:
-        st.sidebar.error(f"❌ {s_id} は使用中です。")
+        st.sidebar.error(f"❌ 使用中です。")
     else:
-        btn_text = "着席情報を更新" if not existing_user.empty and existing_user.iloc[0]["座席番号"] == s_id else ("移動する" if not existing_user.empty else "チェックイン")
+        btn_text = "情報を更新" if not existing_user.empty and existing_user.iloc[0]["座席番号"] == s_id else ("移動する" if not existing_user.empty else "チェックイン")
         if st.sidebar.button(btn_text, use_container_width=True, type="primary"):
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
@@ -170,11 +176,9 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- 【修正】サイドバー最下部にQRコードを表示（ローカル生成版） ---
+# --- サイドバー最下部：QRコード ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📱 スマホで共有")
-st.sidebar.caption("カメラで読み取って即アクセス")
-
 def get_qr_image_data(url):
     qr = qrcode.QRCode(version=1, box_size=10, border=2)
     qr.add_data(url)
