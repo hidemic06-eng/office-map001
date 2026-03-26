@@ -20,52 +20,52 @@ FILENAME = "office_layout_with_islands.png"
 def generate_coords():
     coords = {}
     
-    # 【微調整ポイント】
-    # 全体を右にずらすために left_base を増やし、
-    # 左右の間隔(top_gap)を調整しました。
-    top_gap = 1.6 # 左右の席の間隔を少し広げました
+    # 1. A-E島 (12席、左右6席ずつ) の個別調整
+    # 左にある島ほど、大きく右にスライド（leftを増やす）させています
+    # Eは修正不要とのことなので 40.2 のまま固定
+    islands_top = {
+        "A": 21.0,  # 1.0プラスして右へ
+        "B": 25.8,  # 0.8プラス
+        "C": 30.5,  # 0.5プラス
+        "D": 35.2,  # 0.2プラス
+        "E": 40.2   # 修正なし
+    }
     
-    # 1. A-E島 (12席、左右6席ずつ)
-    # 起点を 19.5 -> 20.0 に変更
-    islands_top = {"A": 20.0, "B": 25.0, "C": 30.0, "D": 35.0, "E": 40.2}
     for label, left_base in islands_top.items():
+        # A島だけ左右の間隔を狭く、それ以外は標準の間隔に設定
+        current_gap = 1.2 if label == "A" else 1.6
+        
         for i in range(6): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
+            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - current_gap}
         for i in range(6): # 右側
-            coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
+            coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + current_gap}
 
-    # 2. F-K島 (10席、左右5席ずつ)
-    # 起点を 51.5 -> 51.8 に変更
+    # 2. F-K島 (ここから下は前回の設定を維持)
     islands_mid = {"F": 51.8, "G": 57.0, "H": 62.0, "I": 67.2, "J": 74.0, "K": 79.2}
     for label, left_base in islands_mid.items():
+        top_gap = 1.6
         for i in range(5): # 左側
             coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(5): # 右側
             coords[f"{label}-{i+6}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
-    # 3. M-R島 (8席、左右4席ずつ)
+    # 3. M-R島 (前回の設定を維持)
     islands_bottom = {"M": 51.8, "N": 57.0, "O": 62.0, "P": 68.2, "Q": 74.2, "R": 81.2}
     for label, left_base in islands_bottom.items():
+        top_gap = 1.6
         for i in range(4): # 左側
             coords[f"{label}-{i+1}"] = {"top": 66.5 + i*6.6, "left": left_base - top_gap}
         for i in range(4): # 右側
             coords[f"{label}-{i+5}"] = {"top": 66.5 + i*6.6, "left": left_base + top_gap}
 
-    # L島 (83.5 -> 84.2)
-    for i in range(5):
-        coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 84.2}
-
-    # S島 (85.5 -> 86.2)
-    for i in range(4):
-        coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 86.2}
-
-    # その他エリア
+    # L島・S島・その他（前回の設定を維持）
+    for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 84.2}
+    for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 86.2}
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
-    for i in range(5):
-        coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
+    for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
 
     return coords
-
+    
 seat_coords = generate_coords()
 
 # スプレッドシートから読み込み
