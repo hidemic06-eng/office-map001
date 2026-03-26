@@ -79,10 +79,12 @@ if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
     
+    # --- 修正後（zoomを加えたり、表示幅を調整したりできます） ---
     map_html = f'''
-    <div style="position: relative; width:100%;">
-        <img src="data:image/png;base64,{b64_string}" style="width:100%; opacity:0.8;">
+    <div style="position: relative; width: 100%; overflow-x: auto;">
+        <img src="data:image/png;base64,{b64_string}" style="min-width: 1200px; width: 100%; opacity: 0.9;">
     '''
+
     
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
