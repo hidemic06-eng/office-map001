@@ -18,9 +18,10 @@ FILENAME = "office_layout_with_islands.png"
 # 座席座標の設定（図面に基づいた全141席＋主要エリア）
 # --- app.py の generate_coords()関数の中身を書き換え ---
 def generate_coords():
-    # --- 前半（A-K, M-R）は「ばっちり」の設定を維持 ---
     coords = {}
     top_gap = 1.6 
+    
+    # --- A-E島 (確定) ---
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(6):
@@ -28,6 +29,7 @@ def generate_coords():
         for i in range(6):
             coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
+    # --- F-K島 (確定) ---
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(5):
@@ -35,6 +37,7 @@ def generate_coords():
         for i in range(5):
             coords[f"{label}-{i+6}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
+    # --- M-R島 (確定) ---
     islands_bottom_mapping = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom_mapping.items():
         for i in range(4):
@@ -42,17 +45,17 @@ def generate_coords():
         for i in range(4):
             coords[f"{label}-{i+5}"] = {"top": 66.5 + i*6.6, "left": left_base + top_gap}
 
-    # --- 今回の修正：L島とS島 ---
+    # --- 最終微調整：L島とS島 ---
     
-    # L島: K(79.2)と前のL(84.2)の差を1/3ほど詰め、82.5に設定
+    # L島: 82.5から少しだけ右(0.5プラス)へ戻して 83.0 に
     for i in range(5):
-        coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 82.5}
+        coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
 
-    # S島: R(79.2)との位置関係をLに合わせ、84.5に設定
+    # S島: バランスをとって 85.0 に設定
     for i in range(4):
-        coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 84.5}
+        coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 85.0}
     
-    # その他
+    # --- その他エリア ---
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5):
         coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
