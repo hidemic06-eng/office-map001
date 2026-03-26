@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from streamlit_gsheets import GSheetsConnection
 import base64
 import os
+import urllib.parse
 
 # 1. ページ設定
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
@@ -74,6 +75,8 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
                 with cols[i % 2]:
                     st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
             st.markdown("---")
+
+st.sidebar.markdown("---")
 
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
@@ -150,25 +153,17 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 最終更新情報 & QRコード表示 ---
-col1, col2 = st.columns([3, 1])
+# --- マップの下に最終更新情報 ---
+if not df_now.empty:
+    latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
+    l_time = str(latest['更新日時']).split(" ")[-1]
+    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
 
-with col1:
-    if not df_now.empty:
-        latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
-        l_time = str(latest['更新日時']).split(" ")[-1]
-        st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
-
-with col2:
-    # 現在のアプリURLを取得してQRコードを生成
-    import urllib.parse
-    try:
-        # Streamlit Cloud上でのURLを取得（もし取得できなければ空欄）
-        app_url = "https://office-map001.streamlit.app/" 
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(app_url)}"
-        st.image(qr_url, caption="スマホで登録", use_container_width=False)
-    except:
-        pass
+# --- サイドバー下部にQRコードを配置 ---
+st.sidebar.markdown("---")
+app_url = "https://office-map001.streamlit.app/" 
+qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(app_url)}"
+st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
 
 # --- 登録・移動・退席ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
