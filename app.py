@@ -54,7 +54,7 @@ df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
 st.sidebar.header("🔍 担当者検索")
-search_query = st.sidebar.text_input("名前を入力")
+search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
 with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
     if not df_now.empty:
@@ -105,7 +105,8 @@ s_id = None
 selected_group = "未選択"
 
 if mode == "新しく座る・移動する":
-    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎")
+    # 【重要】keyを指定して、後でクリアできるようにする
+    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎", key="u_name_input")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
     special_list = sorted([s for s in all_seats if '-' not in s])
@@ -167,7 +168,7 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 【修正】マップの「下」に最終更新情報を表示 ---
+# --- マップの「下」に最終更新情報を表示 ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
@@ -189,6 +190,8 @@ if mode == "新しく座る・移動する" and u_name and s_id:
                 new_df = df_now[df_now["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+                # 【改善】成功時に入力欄をクリア
+                st.session_state.u_name_input = ""
                 st.rerun()
     elif not existing_user.empty:
         old_seat = existing_user.iloc[0]["座席番号"]
@@ -196,11 +199,15 @@ if mode == "新しく座る・移動する" and u_name and s_id:
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+            # 【改善】成功時に入力欄をクリア
+            st.session_state.u_name_input = ""
             st.rerun()
     else:
         if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([df_now, new_row], ignore_index=True))
+            # 【改善】成功時に入力欄をクリア
+            st.session_state.u_name_input = ""
             st.rerun()
 
 elif mode == "退席する":
