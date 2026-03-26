@@ -6,11 +6,19 @@ import base64
 import os
 import qrcode
 from io import BytesIO
+import time
 
 # 1. ページ設定
 st.set_page_config(layout="wide", page_title="オフィス座席マップ", initial_sidebar_state="expanded")
 
-# --- 自動リフレッシュを30秒に設定 ---
+# --- 日本時間(JST)の定義 ---
+JST = timezone(timedelta(hours=+9), 'JST')
+
+# --- 30秒ごとにフラグメントを更新 ---
+# カウントダウン用に少し工夫します
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
 st.fragment(run_every=30)(lambda: None)() 
 
 # 2. Google Sheets 接続
@@ -47,13 +55,14 @@ seat_coords = generate_coords()
 # 5. データ読み込み
 def load_data():
     try:
-        return conn.read(worksheet="Sheet1", ttl=0)
+        df = conn.read(worksheet="Sheet1", ttl=0)
+        return df
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
 
 df_now = load_data()
 
-# --- CSS設定 ---
+# --- CSS設定（スマホ対応） ---
 st.markdown("""
     <style>
     @keyframes blink {
@@ -63,29 +72,47 @@ st.markdown("""
     }
     .blinking-dot { animation: blink 0.8s infinite; z-index: 30 !important; border: 2px solid #FFD700 !important; box-shadow: 0 0 15px #FFD700; }
     .main .block-container { padding-top: 1rem; }
-    .last-update-box { position: absolute; top: 0px; right: 10px; background-color: #f0f2f6; padding: 5px 15px; border-radius: 10px; border: 1px solid #ddd; text-align: right; z-index: 100; }
+    
+    /* PCでは右上、スマホ(幅768px以下)では地図の下へ */
+    .last-update-box {
+        background-color: #f0f2f6;
+        padding: 8px 15px;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    @media (min-width: 769px) {
+        .last-update-box {
+            position: absolute;
+            top: 0px;
+            right: 10px;
+            z-index: 100;
+            width: 180px;
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 6. タイトルと最終更新の表示
-col_title, col_update = st.columns([2, 1])
-with col_title:
-    st.title("📍 事務所座席図")
+# 6. タイトル表示
+st.title("📍 事務所座席図")
 
-with col_update:
-    if not df_now.empty:
-        latest_row = df_now.sort_values("更新日時", ascending=False).iloc[0]
-        raw_dt = str(latest_row["更新日時"])
-        # HH:MM 部分を抽出
-        l_time = raw_dt.split(" ")[1] if " " in raw_dt else raw_dt
-        l_user = latest_row["担当者"]
-        st.markdown(f"""
-            <div class="last-update-box">
-                <span style="font-size: 0.8em; color: #666;">最終データ更新</span><br>
-                <span style="font-size: 1.5em; font-weight: bold; color: #FF4B4B;">{l_time}</span><br>
-                <span style="font-size: 0.7em; color: #888;">(by {l_user}さん)</span>
-            </div>
-        """, unsafe_allow_html=True)
+# 7. 最終更新ボックス（日本時間対応・カウントダウン付）
+if not df_now.empty:
+    latest_row = df_now.sort_values("更新日時", ascending=False).iloc[0]
+    l_time = str(latest_row["更新日時"]).split(" ")[-1] # HH:MM形式を想定
+    l_user = latest_row["担当者"]
+    
+    # リフレッシュまでの残り時間を簡易表示
+    next_ref = 30 - int(time.time() - st.session_state.last_refresh) % 30
+    
+    st.markdown(f"""
+        <div class="last-update-box">
+            <span style="font-size: 0.75em; color: #666;">最終更新 ({l_user}さん)</span><br>
+            <span style="font-size: 1.4em; font-weight: bold; color: #FF4B4B;">{l_time}</span><br>
+            <span style="font-size: 0.7em; color: #888;">🔃 自動更新まであと {next_ref}秒</span>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --- サイドバー ---
 st.sidebar.header("🔍 検索")
@@ -124,13 +151,11 @@ if mode == "新しく座る・移動する":
 
         if st.sidebar.button("チェックイン / 移動", use_container_width=True, type="primary"):
             if u_name:
-                # 日本時間(JST)を取得して保存
-                jst = timezone(timedelta(hours=+9), 'JST')
-                now_jst = datetime.now(jst).strftime("%m/%d %H:%M")
-                
+                now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
                 new_df = df_now[df_now["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+                st.session_state.last_refresh = time.time() # タイマーリセット
                 st.rerun()
 
 elif mode == "退席する":
@@ -139,6 +164,7 @@ elif mode == "退席する":
         target = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
         if st.sidebar.button("退席", use_container_width=True):
             conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target])
+            st.session_state.last_refresh = time.time()
             st.rerun()
 
 # --- マップ描画 ---
@@ -156,7 +182,7 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# QRコード生成（外部APIを使わず内蔵生成）
+# QRコード
 st.sidebar.markdown("---")
 st.sidebar.subheader("📱 スマホで共有")
 qr_img_buf = BytesIO()
