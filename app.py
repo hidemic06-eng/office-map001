@@ -62,11 +62,26 @@ df_now = load_data()
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力（マップが点滅します）")
 
+# 【改良】エリア別・2列バッジ表示の着席者一覧
 with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
     if not df_now.empty:
-        sorted_list = df_now.sort_values("担当者")
-        for _, row in sorted_list.iterrows():
-            st.write(f"🔹 {row['担当者']} ({row['座席番号']})")
+        # 島（エリア）ごとにグループ化するための準備
+        df_list = df_now.copy()
+        df_list["島"] = df_list["座席番号"].apply(lambda x: x.split('-')[0])
+        # A, B, C...順にソート
+        islands = sorted(df_list["島"].unique())
+
+        for island in islands:
+            st.markdown(f"**🔹 {island}島・エリア**")
+            members = df_list[df_list["島"] == island].sort_values("座席番号")
+            
+            # 2列に分けて表示
+            cols = st.columns(2)
+            for i, (_, row) in enumerate(members.iterrows()):
+                with cols[i % 2]:
+                    # バッジ風に表示
+                    st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
+            st.markdown("---")
     else:
         st.write("着席中のメンバーはいません")
 
@@ -128,7 +143,7 @@ current_members = df_now["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
 if mode == "新しく座る・移動する":
-    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="同姓がいる場合はフルネーム推奨")
+    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎")
     
     # 座席選択（二段構え）
     all_seats = list(seat_coords.keys())
@@ -145,12 +160,10 @@ if mode == "新しく座る・移動する":
                                  key=lambda x: int(x.split('-')[1]))
             s_id = st.sidebar.selectbox("📍 座席番号を選択", island_seats)
 
-    # 移動と新規登録の自動判定
+    # 移動と新規登録の判定
     if u_name and s_id:
         existing_user = df_now[df_now["担当者"] == u_name]
-        
         if not existing_user.empty:
-            # すでに座っている場合：ボタンを「移動用」に切り替え
             old_seat = existing_user.iloc[0]["座席番号"]
             if old_seat == s_id:
                 st.sidebar.info(f"既に {s_id} に着席済みです。")
@@ -163,9 +176,7 @@ if mode == "新しく座る・移動する":
                     conn.update(worksheet="Sheet1", data=final_df)
                     st.success(f"移動完了！")
                     st.rerun()
-                st.sidebar.caption("※同姓の別人の場合は名前を微調整してください")
         else:
-            # 新規着席の場合
             if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
                 new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 final_df = pd.concat([df_now, new_row], ignore_index=True)
