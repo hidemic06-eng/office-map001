@@ -14,30 +14,42 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 設定 ---
 FILENAME = "office_layout_with_islands.png"
 
-# 座席座標の設定
+# 座席座標の設定（全141席＋主要エリア）
 def generate_coords():
     coords = {}
     top_gap = 1.6 
+    
+    # A-E島 (12席)
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
+            
+    # F-K島 (10席)
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
+            
+    # M-R島 (8席)
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
         for i in range(8):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
+            
+    # L島 & S島
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
+    
+    # 特殊席
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
+    
     return coords
     
 seat_coords = generate_coords()
 
+# データ読み込み
 def load_data():
     try:
         return conn.read(worksheet="Sheet1", ttl="0")
@@ -46,7 +58,7 @@ def load_data():
 
 df_now = load_data()
 
-# --- サイドバー：検索 & リスト表示 ---
+# --- サイドバー：検索・リスト ---
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力（マップが点滅します）")
 
@@ -107,16 +119,15 @@ if os.path.exists(FILENAME):
             map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:9px; 
                             background:{label_bg}; color:{label_color}; padding:1px 3px; border-radius:2px; 
                             transform:translate(-50%, -120%); white-space:nowrap; z-index:10; font-weight:{"bold" if is_searching else "normal"};">{label}</div>'''
-            
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- サイドバー：入退室管理 ---
-st.sidebar.header("📝 入退室管理")
+# --- サイドバー：入退室・移動管理 ---
+st.sidebar.header("📝 入退室・移動")
 current_members = df_now["担当者"].unique().tolist()
-mode = st.sidebar.radio("操作を選択", ["新しく座る", "退席・移動する"])
+mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
-if mode == "新しく座る":
+if mode == "新しく座る・移動する":
     u_name = st.sidebar.text_input("👤 名前を入力", placeholder="同姓がいる場合はフルネーム推奨")
     
     # 座席選択（二段構え）
@@ -133,40 +144,36 @@ if mode == "新しく座る":
             island_seats = sorted([s for s in all_seats if s.startswith(f"{selected_group}-")], 
                                  key=lambda x: int(x.split('-')[1]))
             s_id = st.sidebar.selectbox("📍 座席番号を選択", island_seats)
-    
-    if st.sidebar.button("チェックイン", use_container_width=True, type="primary"):
-        if u_name and s_id:
-            # --- 重要：重複・移動判定ロジック ---
-            existing_user = df_now[df_now["担当者"] == u_name]
-            
-            if not existing_user.empty:
-                # すでに名前が存在する場合
-                old_seat = existing_user.iloc[0]["座席番号"]
-                if old_seat == s_id:
-                    st.sidebar.info(f"既に {s_id} に着席済みです。")
-                else:
-                    # 移動か別人かを確認するための警告を出す
-                    st.sidebar.warning(f"確認：『{u_name}』さんは現在 {old_seat} にいます。")
-                    # ここで「移動として扱う」フラグをセッションで持つのは複雑なので、
-                    # 運用上「移動ならもう一度ボタンを押す」という簡易的な２度押し確認にします
-                    if st.sidebar.checkbox("これは私の席移動です（チェックして再度ボタン押下）"):
-                        new_df = df_now[df_now["担当者"] != u_name].copy()
-                        new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-                        final_df = pd.concat([new_df, new_row], ignore_index=True)
-                        conn.update(worksheet="Sheet1", data=final_df)
-                        st.success(f"{u_name}さんの移動を完了しました！")
-                        st.rerun()
-                    else:
-                        st.sidebar.info("もし同姓の別人なら、名前に(A)などを付けて再度入力してください。")
+
+    # 移動と新規登録の自動判定
+    if u_name and s_id:
+        existing_user = df_now[df_now["担当者"] == u_name]
+        
+        if not existing_user.empty:
+            # すでに座っている場合：ボタンを「移動用」に切り替え
+            old_seat = existing_user.iloc[0]["座席番号"]
+            if old_seat == s_id:
+                st.sidebar.info(f"既に {s_id} に着席済みです。")
             else:
-                # 新規着席
+                st.sidebar.warning(f"現在、{u_name}さんは {old_seat} にいます。")
+                if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+                    new_df = df_now[df_now["担当者"] != u_name].copy()
+                    new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                    final_df = pd.concat([new_df, new_row], ignore_index=True)
+                    conn.update(worksheet="Sheet1", data=final_df)
+                    st.success(f"移動完了！")
+                    st.rerun()
+                st.sidebar.caption("※同姓の別人の場合は名前を微調整してください")
+        else:
+            # 新規着席の場合
+            if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
                 new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 final_df = pd.concat([df_now, new_row], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=final_df)
                 st.success(f"{u_name}さん、着席完了！")
                 st.rerun()
-        else:
-            st.sidebar.error("名前と座席を選択してください")
+    else:
+        st.sidebar.info("名前と座席を選択してください。")
 
 else: # 退席モード
     if not current_members: st.sidebar.info("着席中の人はいません")
