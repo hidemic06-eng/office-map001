@@ -19,44 +19,44 @@ FILENAME = "office_layout_with_islands.png"
 # --- app.py の generate_coords()関数の中身を書き換え ---
 def generate_coords():
     coords = {}
-    
-    # 標準のドット間隔（左右の席の広さ）
-    # AもBと同じにするため、一律 1.6 に設定
     top_gap = 1.6 
     
-    # 1. A-E島 (12席、左右6席ずつ) の個別調整
-    # A, B, C は左へスライド（数値を減らす）
-    # D は「少しだけ右へ」とのことなので、前回の 34.2 から 34.8 へ微増
-    # E は 40.2 のまま固定
+    # 1. A-E島 (前回「ばっちり」と言っていただいた設定)
     islands_top = {
-        "A": 18.2,  # 左へ
-        "B": 23.5,  # 左へ
-        "C": 28.9,  # 左へ
-        "D": 34.8,  # 前回の34.2から少し右(プラス)へ
-        "E": 40.2   # 固定
+        "A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2
     }
-    
     for label, left_base in islands_top.items():
         for i in range(6): # 左側
             coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(6): # 右側
             coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
-    # --- 以下、F以降の島（前回と同じ設定） ---
-    islands_mid = {"F": 51.8, "G": 57.0, "H": 62.0, "I": 67.2, "J": 74.0, "K": 79.2}
+    # 2. F-K島 (今回の修正ポイント)
+    # Fを大きく左へ、G, H, I, Jと段階的に左への移動量を減らしています
+    # K は「ばっちり」とのことなので 79.2 のまま固定
+    islands_mid = {
+        "F": 50.4,  # 1.4マイナスして左へ
+        "G": 55.9,  # 1.1マイナス
+        "H": 61.2,  # 0.8マイナス
+        "I": 66.7,  # 0.5マイナス
+        "J": 73.8,  # 0.2マイナス
+        "K": 79.2   # 修正不要（固定）
+    }
     for label, left_base in islands_mid.items():
-        for i in range(5):
+        for i in range(5): # 左側
             coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
-        for i in range(5):
+        for i in range(5): # 右側
             coords[f"{label}-{i+6}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
+    # 3. M-R島 (※ここもF-Kと同じ傾向なら、同様の調整が必要になるかもしれません)
     islands_bottom = {"M": 51.8, "N": 57.0, "O": 62.0, "P": 68.2, "Q": 74.2, "R": 81.2}
     for label, left_base in islands_bottom.items():
-        for i in range(4):
+        for i in range(4): # 左側
             coords[f"{label}-{i+1}"] = {"top": 66.5 + i*6.6, "left": left_base - top_gap}
-        for i in range(4):
+        for i in range(4): # 右側
             coords[f"{label}-{i+5}"] = {"top": 66.5 + i*6.6, "left": left_base + top_gap}
 
+    # L島・S島・その他エリア
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 84.2}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 86.2}
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
