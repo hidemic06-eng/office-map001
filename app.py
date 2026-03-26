@@ -21,18 +21,18 @@ def generate_coords():
     coords = {}
     
     # 1. A-E島 (12席、左右6席ずつ) の個別調整
-    # 左にある島ほど、大きく右にスライド（leftを増やす）させています
+    # 右にズレているとのことなので、A〜Dの値を小さくして「左」へスライドさせます
     # Eは修正不要とのことなので 40.2 のまま固定
     islands_top = {
-        "A": 21.0,  # 1.0プラスして右へ
-        "B": 25.8,  # 0.8プラス
-        "C": 30.5,  # 0.5プラス
-        "D": 35.2,  # 0.2プラス
-        "E": 40.2   # 修正なし
+        "A": 18.2,  # 約1.3マイナスして左へ
+        "B": 23.5,  # 約1.0マイナス
+        "C": 28.9,  # 約0.6マイナス
+        "D": 34.2,  # 約0.3マイナス
+        "E": 40.2   # 修正不要（固定）
     }
     
     for label, left_base in islands_top.items():
-        # A島だけ左右の間隔を狭く、それ以外は標準の間隔に設定
+        # A島の間隔を狭め、それ以外は標準の間隔(1.6)に設定
         current_gap = 1.2 if label == "A" else 1.6
         
         for i in range(6): # 左側
@@ -40,25 +40,23 @@ def generate_coords():
         for i in range(6): # 右側
             coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + current_gap}
 
-    # 2. F-K島 (ここから下は前回の設定を維持)
+    # --- 以下、F以降の島は前回と同じ設定 ---
     islands_mid = {"F": 51.8, "G": 57.0, "H": 62.0, "I": 67.2, "J": 74.0, "K": 79.2}
     for label, left_base in islands_mid.items():
         top_gap = 1.6
-        for i in range(5): # 左側
+        for i in range(5):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
-        for i in range(5): # 右側
+        for i in range(5):
             coords[f"{label}-{i+6}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
-    # 3. M-R島 (前回の設定を維持)
     islands_bottom = {"M": 51.8, "N": 57.0, "O": 62.0, "P": 68.2, "Q": 74.2, "R": 81.2}
     for label, left_base in islands_bottom.items():
         top_gap = 1.6
-        for i in range(4): # 左側
+        for i in range(4):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + i*6.6, "left": left_base - top_gap}
-        for i in range(4): # 右側
+        for i in range(4):
             coords[f"{label}-{i+5}"] = {"top": 66.5 + i*6.6, "left": left_base + top_gap}
 
-    # L島・S島・その他（前回の設定を維持）
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 84.2}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 86.2}
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
