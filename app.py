@@ -9,9 +9,9 @@ import os
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
 # --- 【更新設定】2分（120秒）ごとに自動リフレッシュ ---
-st.fragment(run_every=120)(lambda: None)() 
+st.fragment(run_every=120)(lambda: None) 
 
-# 日本時間(JST)の定義：サーバーとの9時間ズレを解消
+# 日本時間(JST)の定義
 JST = timezone(timedelta(hours=9))
 
 # 2. Google Sheets 接続設定
@@ -46,7 +46,6 @@ seat_coords = generate_coords()
 
 def load_data():
     try:
-        # ttl=0で常に最新データを取得
         return conn.read(worksheet="Sheet1", ttl=0)
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -55,7 +54,7 @@ df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
 st.sidebar.header("🔍 担当者検索")
-search_query = st.sidebar.text_input("名前を入力（マップが点滅します）")
+search_query = st.sidebar.text_input("名前を入力")
 
 with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
     if not df_now.empty:
@@ -78,13 +77,6 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# 【改善】最終更新情報をタイトル直下に配置（スマホでも重ならない）
-if not df_now.empty:
-    latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
-    # 9:55などのズレを防ぐため、最新の更新時間を表示
-    l_time = str(latest['更新日時']).split(" ")[-1]
-    st.info(f"🕒 最終データ更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
-
 # 点滅アニメーションCSS
 st.markdown("""
     <style>
@@ -99,6 +91,7 @@ st.markdown("""
         border: 2px solid #FFD700 !important;
         box-shadow: 0 0 15px #FFD700;
     }
+    .main .block-container { padding-top: 1rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -153,7 +146,7 @@ if os.path.exists(FILENAME):
 
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
-        dot_size = "1.5%" if is_highlight else "1.0%" # スマホ対応のため%指定
+        dot_size = "1.2%" if is_highlight else "0.8%"
         z_index = "50" if is_highlight else "10"
 
         map_html += f'''<div class="{dot_class}" title="{seat_id}" style="position: absolute; width:{dot_size}; padding-top:{dot_size}; border-radius: 50%; 
@@ -164,8 +157,7 @@ if os.path.exists(FILENAME):
         label_bg = "rgba(255, 215, 0, 1.0)" if is_highlight else ("rgba(0,0,0,0.7)" if label else "rgba(200,200,200,0.5)")
         label_color = "black" if is_highlight else "white"
         font_weight = "bold" if (label or is_highlight) else "normal"
-        # フォントサイズをvw(画面幅基準)にしてスマホで見やすく
-        font_size = "min(1.5vw, 10px)" if is_highlight else "min(1.2vw, 8px)"
+        font_size = "min(1.4vw, 9px)" if is_highlight else "min(1.1vw, 7px)"
         l_z_index = "60" if is_highlight else "15"
 
         map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:{font_size}; 
@@ -175,9 +167,14 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
+# --- 【修正】マップの「下」に最終更新情報を表示 ---
+if not df_now.empty:
+    latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
+    l_time = str(latest['更新日時']).split(" ")[-1]
+    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
+
 # --- 登録・移動・退席の実行ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
-    # 保存時に日本時間(JST)を正確に取得
     now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
     
     occupant = df_now[df_now["座席番号"] == s_id]
