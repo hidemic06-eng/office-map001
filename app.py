@@ -16,25 +16,42 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 FILENAME = "office_layout_with_islands.png"
 
 # 座席座標の設定（図面に基づいた全141席＋主要エリア）
+# --- app.py の generate_coords()関数の中身を書き換え ---
 def generate_coords():
     coords = {}
     
-    # A-E島: 各12席 (左右6席ずつ)
+    # 【追加】デスクとドットの間隔を調整する設定 (gap)
+    # ドットを少し「左」にずらしたい場合は、1.2を小さく（例: 1.0）
+    # ドットを少し「右」にずらしたい場合は、1.2を大きく（例: 1.4）
+    top_gap = 1.2 # デスク中心とドットの間隔 (%単位)
+    
+    # 1. A-E島 (12席、左右6席ずつ)
+    # もし島全体を「右」にずらしたい場合は、leftの値を大きく（例: 19.5 -> 19.8）
     islands_top = {"A": 19.5, "B": 24.5, "C": 29.5, "D": 34.5, "E": 39.5}
     for label, left_base in islands_top.items():
         for i in range(6): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - 1.2}
+            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - top_gap}
         for i in range(6): # 右側
-            coords[f"{label}-{i+7}"] = {"top": 28.0 + i*6.5, "left": left_base + 1.2}
+            coords[f"{label}-{i+7}"] = {"top": 28.0 + i*6.5, "left": left_base + top_gap}
 
-    # F-K島: 各10席 (左右5席ずつ)
+    # 2. F-K島 (10席、左右5席ずつ)
     islands_mid = {"F": 51.5, "G": 56.5, "H": 61.5, "I": 66.5, "J": 73.5, "K": 78.5}
     for label, left_base in islands_mid.items():
         for i in range(5): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - 1.2}
+            coords[f"{label}-{i+1}"] = {"top": 28.0 + i*6.5, "left": left_base - top_gap}
         for i in range(5): # 右側
-            coords[f"{label}-{i+6}"] = {"top": 28.0 + i*6.5, "left": left_base + 1.2}
+            coords[f"{label}-{i+6}"] = {"top": 28.0 + i*6.5, "left": left_base + top_gap}
 
+    # 3. M-R島 (8席、左右4席ずつ)
+    islands_bottom = {"M": 51.5, "N": 56.5, "O": 61.5, "P": 67.5, "Q": 73.5, "R": 80.5}
+    for label, left_base in islands_bottom.items():
+        for i in range(4): # 左側
+            coords[f"{label}-{i+1}"] = {"top": 66.0 + i*6.5, "left": left_base - top_gap}
+        for i in range(4): # 右側
+            coords[f"{label}-{i+5}"] = {"top": 66.0 + i*6.5, "left": left_base + top_gap}
+            
+    # （L島、S島、その他は今のままでOK）
+    # ...以下のコードは変更なし...
     # L島: 5席 (片側)
     for i in range(5):
         coords[f"L-{i+1}"] = {"top": 28.0 + i*6.5, "left": 83.5}
