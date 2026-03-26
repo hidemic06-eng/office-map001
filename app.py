@@ -9,7 +9,7 @@ import urllib.parse
 # 1. ページ設定
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
-# --- 【更新設定】2分（120秒）ごとに自動リフレッシュ ---
+# --- 【更新設定】2分ごとに自動リフレッシュ ---
 st.fragment(run_every=120)(lambda: None) 
 
 # 日本時間(JST)の定義
@@ -26,7 +26,7 @@ def clear_input_callback():
 # 4. 設定
 FILENAME = "office_layout_with_islands.png"
 
-# 座席座標の設定
+# 座席座標の設定（ここは以前の数値のまま）
 def generate_coords():
     coords = {}
     top_gap = 1.6 
@@ -81,7 +81,7 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS修正（transformの干渉を防ぐ）
+# アニメーションCSS
 st.markdown("""
     <style>
     @keyframes blink {
@@ -123,12 +123,14 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画（歪みとズレの修正版） ---
+# --- マップ描画（座標精度 復活版） ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
     
-    map_html = f'''<div style="position: relative; width:100%;"><img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'''
+    # 地図コンテナを定義
+    map_html = f'''<div style="position: relative; width:100%; max-width:1000px; margin: auto;">
+                   <img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'''
     
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
@@ -140,27 +142,27 @@ if os.path.exists(FILENAME):
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         
-        # 修正ポイント: サイズを vw にして正方形を維持、transformで中心を固定
-        dot_size = "0.9vw"
+        # サイズを % に戻し、aspect-ratio で円形を保持。位置のズレを最小化。
+        size_pct = "0.9%"
         map_html += f'''<div class="{dot_class}" style="position: absolute; 
-                        width:{dot_size}; height:{dot_size}; border-radius: 50%; 
+                        width:{size_pct}; aspect-ratio: 1 / 1; border-radius: 50%; 
                         top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
-                        transform:translate(-50%, -50%); z-index:10; box-sizing: border-box;"></div>'''
+                        transform:translate(-50%, -50%); z-index:10;"></div>'''
         
         if label or is_highlight:
             display_text = label if label else seat_id
             map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 8px); 
                             background:rgba(0,0,0,0.7); color:white; padding:1px 3px; border-radius:2px; 
-                            transform:translate(-50%, -150%); white-space:nowrap; z-index:15;">{display_text}</div>'''
+                            transform:translate(-50%, -160%); white-space:nowrap; z-index:15;">{display_text}</div>'''
                         
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 最終更新情報（マップの下） ---
+# --- 最終更新情報 ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
-    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
+    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新")
 
 # --- 登録・移動・退席ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
@@ -184,7 +186,7 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部QRコード ---
+# --- QRコード ---
 st.sidebar.markdown("---")
 app_url = "https://office-map001.streamlit.app/" 
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(app_url)}"
