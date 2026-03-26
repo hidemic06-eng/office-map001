@@ -5,39 +5,52 @@ from streamlit_gsheets import GSheetsConnection
 import base64
 import os
 
-# ページ設定
+# 1. ページ設定
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
-# --- Google Sheets 接続設定 ---
+# 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 設定 ---
+# 3. 定数設定
 FILENAME = "office_layout_with_islands.png"
+APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-# 座席座標の設定
+# 4. 座席座標の生成（141席＋特殊エリア）
 def generate_coords():
     coords = {}
     top_gap = 1.6 
+    
+    # A-E島 (各12席)
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
+            
+    # F-K島 (各10席)
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
+            
+    # M-R島 (各8席)
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
         for i in range(8):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
+            
+    # L島 & S島
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
+    
+    # 特殊席
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
-    return coords
     
+    return coords
+
 seat_coords = generate_coords()
 
+# 5. データ読み込み（キャッシュ無効化）
 def load_data():
     try:
         return conn.read(worksheet="Sheet1", ttl="0")
@@ -62,7 +75,6 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
             for i, (_, row) in enumerate(members.iterrows()):
                 with cols[i % 2]:
                     st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
-            st.markdown("---")
     else:
         st.write("着席中のメンバーはいません")
 
@@ -71,7 +83,7 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# 点滅アニメーションCSS
+# アニメーションCSS
 st.markdown("""
     <style>
     @keyframes blink {
@@ -88,7 +100,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 入退室・移動管理のUIを先に定義（selected_groupをマップ表示に反映させるため）
+# 入退室・移動管理のUI定義
 st.sidebar.header("📝 入退室・移動")
 current_members = df_now["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
@@ -118,7 +130,7 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画ロジック ---
+# --- マップ描画 ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
@@ -129,43 +141,33 @@ if os.path.exists(FILENAME):
         occ = df_now[df_now["座席番号"] == seat_id]
         label = occ.iloc[0]["担当者"] if not occ.empty else ""
         
-        # ハイライト判定：検索にヒットした、またはサイドバーでその「島」が選ばれている
         is_highlight = False
-        if search_query and label and (search_query in label):
-            is_highlight = True
-        if selected_group != "未選択" and seat_id.startswith(f"{selected_group}-"):
-            is_highlight = True
-        if selected_group == seat_id:
-            is_highlight = True
+        if search_query and label and (search_query in label): is_highlight = True
+        if selected_group != "未選択" and seat_id.startswith(f"{selected_group}-"): is_highlight = True
+        if selected_group == seat_id: is_highlight = True
 
-        # スタイル設定
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         dot_size = "12px" if is_highlight else "8px"
         z_index = "50" if is_highlight else "10"
 
-        # 座席ドット
         map_html += f'''<div class="{dot_class}" title="{seat_id}" style="position: absolute; width:{dot_size}; height:{dot_size}; border-radius: 50%; 
                         top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
                         transform:translate(-50%, -50%); z-index:{z_index};"></div>'''
         
-        # ラベル表示（名前があるときは名前、空席でも「常時番号表示」）
-        # 強調時は背景を黄色く、文字を大きくして視認性を上げる
         display_text = label if label else seat_id
         label_bg = "rgba(255, 215, 0, 1.0)" if is_highlight else ("rgba(0,0,0,0.7)" if label else "rgba(200,200,200,0.5)")
         label_color = "black" if is_highlight else "white"
         font_weight = "bold" if (label or is_highlight) else "normal"
         font_size = "10px" if is_highlight else "8px"
-        l_z_index = "60" if is_highlight else "15"
 
         map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:{font_size}; 
                         background:{label_bg}; color:{label_color}; padding:1px 3px; border-radius:2px; 
-                        transform:translate(-50%, -130%); white-space:nowrap; z-index:{l_z_index}; font-weight:{font_weight};">{display_text}</div>'''
-                        
+                        transform:translate(-50%, -130%); white-space:nowrap; z-index:15; font-weight:{font_weight};">{display_text}</div>'''
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 登録・移動・退席の実行ロジック ---
+# --- 実行ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
     occupant = df_now[df_now["座席番号"] == s_id]
     existing_user = df_now[df_now["担当者"] == u_name]
@@ -179,9 +181,7 @@ if mode == "新しく座る・移動する" and u_name and s_id:
             if st.sidebar.button("着席情報を更新する", use_container_width=True):
                 new_df = df_now[df_now["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-                final_df = pd.concat([new_df, new_row], ignore_index=True)
-                conn.update(worksheet="Sheet1", data=final_df)
-                st.success("更新完了！")
+                conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
                 st.rerun()
     elif not existing_user.empty:
         old_seat = existing_user.iloc[0]["座席番号"]
@@ -189,24 +189,24 @@ if mode == "新しく座る・移動する" and u_name and s_id:
         if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-            final_df = pd.concat([new_df, new_row], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=final_df)
-            st.success("移動完了！")
+            conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
             st.rerun()
     else:
         if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
             new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-            final_df = pd.concat([df_now, new_row], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=final_df)
-            st.success("着席完了！")
+            conn.update(worksheet="Sheet1", data=pd.concat([df_now, new_row], ignore_index=True))
             st.rerun()
 
 elif mode == "退席する":
-    if not current_members: st.sidebar.info("着席中の人はいません")
-    else:
+    if current_members:
         target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
         if st.sidebar.button("退席", use_container_width=True):
-            new_df = df_now[df_now["担当者"] != target_name]
-            conn.update(worksheet="Sheet1", data=new_df)
-            st.sidebar.warning(f"{target_name}さんを退席処理しました")
+            conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
             st.rerun()
+
+# --- サイドバー最下部に共有用QRコードを常駐 ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("📱 スマホで共有")
+st.sidebar.caption("カメラで読み取って即アクセス")
+qr_api_url = f"https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl={APP_URL}"
+st.sidebar.image(qr_api_url, use_container_width=False)
