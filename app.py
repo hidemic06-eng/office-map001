@@ -12,7 +12,7 @@ DB_FILE = "seat_master.csv"
 FILENAME = "事務所レイアウト01.png"
 # GitHubへ保存するための設定（自分の情報を入れてください）
 GITHUB_TOKEN = st.secrets["github_token"]
-REPO_URL = f"https://{GITHUB_TOKEN}@github.com/hidemic06-eng/オフィスマップ001.git"
+REPO_URL = f"https://{GITHUB_TOKEN}@github.com/hidemic06-eng/office-map001.git"
 
 def load_data():
     if os.path.exists(DB_FILE):
