@@ -20,15 +20,15 @@ def generate_coords():
     top_gap = 1.6 
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
-        for i in range(12): # A-Eは12席
+        for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
-        for i in range(10): # F-Kは10席
+        for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
-        for i in range(8): # M-Rは8席
+        for i in range(8):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
@@ -117,43 +117,59 @@ current_members = df_now["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る", "退席・移動する"])
 
 if mode == "新しく座る":
-    u_name = st.sidebar.text_input("👤 名前を入力")
+    u_name = st.sidebar.text_input("👤 名前を入力", placeholder="同姓がいる場合はフルネーム推奨")
     
-    # --- 改良：2段構えの座席選択 ---
-    # 島（アルファベット部分）を抽出
+    # 座席選択（二段構え）
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
     special_list = sorted([s for s in all_seats if '-' not in s])
     
-    # 1段目：島を選択
     selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list)
-    
     s_id = None
     if selected_group != "未選択":
         if selected_group in special_list:
-            # 支社長席などの特殊席はそのまま確定
             s_id = selected_group
-            st.sidebar.info(f"選択中: {s_id}")
         else:
-            # 2段目：その島の中の番号を選択
             island_seats = sorted([s for s in all_seats if s.startswith(f"{selected_group}-")], 
                                  key=lambda x: int(x.split('-')[1]))
             s_id = st.sidebar.selectbox("📍 座席番号を選択", island_seats)
     
     if st.sidebar.button("チェックイン", use_container_width=True, type="primary"):
         if u_name and s_id:
-            today_str = datetime.now().strftime("%m/%d")
-            new_df = df_now[(df_now["更新日時"].str.startswith(today_str)) & (df_now["担当者"] != u_name)].copy()
-            new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-            final_df = pd.concat([new_df, new_row], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=final_df)
-            st.success(f"{u_name}さん、{s_id}に登録完了！")
-            st.rerun()
+            # --- 重要：重複・移動判定ロジック ---
+            existing_user = df_now[df_now["担当者"] == u_name]
+            
+            if not existing_user.empty:
+                # すでに名前が存在する場合
+                old_seat = existing_user.iloc[0]["座席番号"]
+                if old_seat == s_id:
+                    st.sidebar.info(f"既に {s_id} に着席済みです。")
+                else:
+                    # 移動か別人かを確認するための警告を出す
+                    st.sidebar.warning(f"確認：『{u_name}』さんは現在 {old_seat} にいます。")
+                    # ここで「移動として扱う」フラグをセッションで持つのは複雑なので、
+                    # 運用上「移動ならもう一度ボタンを押す」という簡易的な２度押し確認にします
+                    if st.sidebar.checkbox("これは私の席移動です（チェックして再度ボタン押下）"):
+                        new_df = df_now[df_now["担当者"] != u_name].copy()
+                        new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                        final_df = pd.concat([new_df, new_row], ignore_index=True)
+                        conn.update(worksheet="Sheet1", data=final_df)
+                        st.success(f"{u_name}さんの移動を完了しました！")
+                        st.rerun()
+                    else:
+                        st.sidebar.info("もし同姓の別人なら、名前に(A)などを付けて再度入力してください。")
+            else:
+                # 新規着席
+                new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                final_df = pd.concat([df_now, new_row], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=final_df)
+                st.success(f"{u_name}さん、着席完了！")
+                st.rerun()
         else:
             st.sidebar.error("名前と座席を選択してください")
 
-else:
-    if not current_members: st.sidebar.info("席に座っている人はいません")
+else: # 退席モード
+    if not current_members: st.sidebar.info("着席中の人はいません")
     else:
         target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
         if st.sidebar.button("退席（チェックアウト）", use_container_width=True):
