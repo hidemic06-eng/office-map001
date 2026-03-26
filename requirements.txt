@@ -1,2 +1,2 @@
 pandas
-st-gsheets-connection
+GitPython
