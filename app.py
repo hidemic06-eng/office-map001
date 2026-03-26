@@ -82,20 +82,22 @@ s_id = st.sidebar.selectbox("📍 座席番号", list(seat_coords.keys()))
 
 if st.sidebar.button("チェックイン", use_container_width=True, type="primary"):
     if u_name:
-        current_df = load_data()
-        # 同じ名前の人がいたら古い行を削除
-        if not current_df.empty and "担当者" in current_df.columns:
-            current_df = current_df[current_df["担当者"] != u_name]
-        
-        # 新しい行を追加
-        new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], 
-                               columns=["更新日時", "担当者", "座席番号"])
-        updated_df = pd.concat([current_df, new_row], ignore_index=True)
-        
-        # スプレッドシートを更新
-        conn.update(worksheet="Sheet1", data=updated_df)
-        st.success(f"{u_name}さん、登録しました！")
-        st.rerun()
+        try:
+            # 1. 新しい1行だけのデータを作成
+            new_data = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], 
+                                   columns=["更新日時", "担当者", "座席番号"])
+            
+            # 2. 「上書き」ではなく「追記（create）」を試みる
+            # これにより既存データとの衝突を避けます
+            conn.create(worksheet="Sheet1", data=new_data)
+            
+            st.success(f"{u_name}さん、登録しました！")
+            # 3. 画面を更新して最新の状態を反映
+            st.rerun()
+        except Exception as e:
+            st.error(f"書き込みエラーが発生しました。スプレッドシートの共有設定が『編集者』になっているか再確認してください。")
+            # 詳細なエラーを画面に出して原因を特定しやすくします
+            st.write(e)
 
 if st.sidebar.button("退席（リセット）"):
     if u_name:
