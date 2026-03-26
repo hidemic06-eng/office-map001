@@ -14,8 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
-# --- 【新規追加】自動リフレッシュ設定（30秒ごとに画面を再読込） ---
-# これにより、自分が操作しなくても他人の更新が反映されます
+# 自動リフレッシュ設定（30秒ごと）
 st.fragment(run_every=30)(lambda: None)() 
 
 # 2. Google Sheets 接続
@@ -49,7 +48,7 @@ def generate_coords():
 
 seat_coords = generate_coords()
 
-# 5. データ読み込み（ttl=0でキャッシュを無効化し、常に最新を取得）
+# 5. データ読み込み（ttl=0で常に最新を取得）
 def load_data():
     try:
         return conn.read(worksheet="Sheet1", ttl=0)
@@ -73,7 +72,9 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
             cols = st.columns(2)
             for i, (_, row) in enumerate(members.iterrows()):
                 with cols[i % 2]:
-                    st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
+                    # リスト側にも更新時間を薄く表示
+                    update_time = row["更新日時"].split(" ")[1] if " " in str(row["更新日時"]) else str(row["更新日時"])
+                    st.caption(f"🪑{row['座席番号']} ({update_time})\n{row['担当者']}")
     else:
         st.write("着席中のメンバーはいません")
 
@@ -93,10 +94,7 @@ st.markdown("""
         border: 2px solid #FFD700 !important;
         box-shadow: 0 0 15px #FFD700;
     }
-    .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1rem;
-    }
+    .main .block-container { padding-top: 1.5rem; padding-bottom: 1rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -132,7 +130,7 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画 ---
+# --- マップ描画（更新時間表示対応） ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
@@ -141,6 +139,12 @@ if os.path.exists(FILENAME):
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
         label = occ.iloc[0]["担当者"] if not occ.empty else ""
+        # 更新時間の取得（秒を省いた時刻部分だけを抽出）
+        update_time = ""
+        if not occ.empty:
+            raw_time = str(occ.iloc[0]["更新日時"])
+            update_time = raw_time.split(" ")[1] if " " in raw_time else raw_time
+
         is_highlight = False
         if search_query and label and (search_query in label): is_highlight = True
         if selected_group != "未選択" and seat_id.startswith(f"{selected_group}-"): is_highlight = True
@@ -152,11 +156,16 @@ if os.path.exists(FILENAME):
         z_index = "50" if is_highlight else "10"
         map_html += f'''<div class="{dot_class}" title="{seat_id}" style="position: absolute; width:{dot_size}; height:{dot_size}; border-radius: 50%; top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; transform:translate(-50%, -50%); z-index:{z_index};"></div>'''
         
-        display_text = label if label else seat_id
+        # ラベル構築（名前があれば名前＋更新時間、なければ座席番号）
+        if label:
+            display_text = f'<b>{label}</b><br><span style="font-size:7px; opacity:0.8;">{update_time}</span>'
+        else:
+            display_text = seat_id
+
         label_bg = "rgba(255, 215, 0, 1.0)" if is_highlight else ("rgba(0,0,0,0.7)" if label else "rgba(200,200,200,0.5)")
         label_color = "black" if is_highlight else "white"
-        font_weight = "bold" if (label or is_highlight) else "normal"
-        map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:{"10px" if is_highlight else "8px"}; background:{label_bg}; color:{label_color}; padding:1px 3px; border-radius:2px; transform:translate(-50%, -130%); white-space:nowrap; z-index:15; font-weight:{font_weight};">{display_text}</div>'''
+        
+        map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:{"10px" if is_highlight else "8px"}; background:{label_bg}; color:{label_color}; padding:1px 3px; border-radius:2px; transform:translate(-50%, -130%); white-space:nowrap; z-index:15; text-align:center; line-height:1.1;">{display_text}</div>'''
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
