@@ -81,7 +81,7 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS（transformを右下寄せに合わせる）
+# アニメーションCSS
 st.markdown("""
     <style>
     @keyframes blink {
@@ -141,7 +141,6 @@ if os.path.exists(FILENAME):
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         
-        # サイズを大きく (1.2%)、位置を右下へオフセット (translate -20%, -20%)
         size_pct = "1.2%"
         map_html += f'''<div class="{dot_class}" style="position: absolute; 
                         width:{size_pct}; aspect-ratio: 1 / 1; border-radius: 50%; 
@@ -161,27 +160,33 @@ if os.path.exists(FILENAME):
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
-    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新")
+    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん)")
 
-# --- 登録・移動・退席ロジック ---
-if mode == "新しく座る・移動する" and u_name and s_id:
-    now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
-    occupant = df_now[df_now["座席番号"] == s_id]
-    existing_user = df_now[df_now["担当者"] == u_name]
+# --- 登録・移動・退席ロジック（ここが移動できない原因箇所でした） ---
+if mode == "新しく座る・移動する":
+    if u_name and s_id:
+        now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
+        occupant = df_now[df_now["座席番号"] == s_id]
+        existing_user = df_now[df_now["担当者"] == u_name]
 
-    if not occupant.empty and occupant.iloc[0]["担当者"] != u_name:
-        st.sidebar.error(f"❌ {s_id} は使用中です。")
-    else:
-        label = "着席情報を更新する" if not occupant.empty else (f"🚀 移動する" if not existing_user.empty else "✅ チェックイン")
-        if st.sidebar.button(label, use_container_width=True, type="primary", on_click=clear_input_callback):
-            new_df = df_now[df_now["担当者"] != u_name].copy()
-            new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
-            conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
-            st.rerun()
+        # 誰かが座っているが、自分ではない場合
+        if not occupant.empty and occupant.iloc[0]["担当者"] != u_name:
+            st.sidebar.error(f"❌ {s_id} は {occupant.iloc[0]['担当者']} さんが使用中です。")
+        else:
+            # すでにどこかに座っている場合は「移動」、そうでなければ「チェックイン」
+            btn_label = "🚀 座席を移動する" if not existing_user.empty else "✅ この席に座る"
+            
+            if st.sidebar.button(btn_label, use_container_width=True, type="primary"):
+                # 古い記録を削除して新規追加
+                new_df = df_now[df_now["担当者"] != u_name].copy()
+                new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+                clear_input_callback()
+                st.rerun()
 
 elif mode == "退席する" and current_members:
     target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
-    if st.sidebar.button("退席", use_container_width=True):
+    if st.sidebar.button("退席する", use_container_width=True):
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
