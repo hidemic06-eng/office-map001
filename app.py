@@ -134,32 +134,54 @@ if mode == "新しく座る・移動する":
                                  key=lambda x: int(x.split('-')[1]))
             s_id = st.sidebar.selectbox("座席番号を選択", island_seats)
 
+    # --- 重複防止ロジック ---
     if u_name and s_id:
+        # その席に誰か座っているか確認
+        occupant = df_now[df_now["座席番号"] == s_id]
+        # その名前の人が他に座っているか確認
         existing_user = df_now[df_now["担当者"] == u_name]
-        if not existing_user.empty:
-            old_seat = existing_user.iloc[0]["座席番号"]
-            if old_seat != s_id: # 違う席なら移動ボタン
-                st.sidebar.warning(f"現在、{u_name}さんは {old_seat} にいます。")
-                if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+
+        if not occupant.empty:
+            current_occupant = occupant.iloc[0]["担当者"]
+            if current_occupant != u_name:
+                # 【最重要】自分以外の誰かが既に座っている場合
+                st.sidebar.error(f"❌ {s_id} は現在 {current_occupant} さんが使用中です。")
+                st.sidebar.caption("別の席を選択するか、相手が退席するのを待ってください。")
+            else:
+                # 自分が座っている場合（情報の更新）
+                st.sidebar.success(f"✅ {u_name}さんは現在 {s_id} に着席中です。")
+                if st.sidebar.button("着席時間を更新する", use_container_width=True):
                     new_df = df_now[df_now["担当者"] != u_name].copy()
                     new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                     final_df = pd.concat([new_df, new_row], ignore_index=True)
                     conn.update(worksheet="Sheet1", data=final_df)
-                    st.success(f"移動完了！")
+                    st.success("更新完了！")
                     st.rerun()
-            else: # まったく同じ席ならメッセージのみ
-                st.sidebar.info(f"既に {s_id} に着席しています。")
-        else: # 新規
+        
+        elif not existing_user.empty:
+            # 席は空いているが、自分が別の場所にいる場合（移動）
+            old_seat = existing_user.iloc[0]["座席番号"]
+            st.sidebar.warning(f"現在、{u_name}さんは {old_seat} にいます。")
+            if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+                new_df = df_now[df_now["担当者"] != u_name].copy()
+                new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+                final_df = pd.concat([new_df, new_row], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=final_df)
+                st.success("移動完了！")
+                st.rerun()
+        
+        else:
+            # 席も空いていて、自分もどこにも座っていない（新規）
             if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
                 new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 final_df = pd.concat([df_now, new_row], ignore_index=True)
                 conn.update(worksheet="Sheet1", data=final_df)
-                st.success(f"{u_name}さん、着席完了！")
+                st.success("着席完了！")
                 st.rerun()
     else:
         st.sidebar.info("名前と座席を選択してください。")
 
-else: # 退席
+else: # 退席モード
     if not current_members: st.sidebar.info("着席中の人はいません")
     else:
         target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
