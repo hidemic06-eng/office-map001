@@ -153,19 +153,13 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- マップの下に最終更新情報 ---
+# --- 最終更新情報（マップの下） ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
     st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
 
-# --- サイドバー下部にQRコードを配置 ---
-st.sidebar.markdown("---")
-app_url = "https://office-map001.streamlit.app/" 
-qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(app_url)}"
-st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
-
-# --- 登録・移動・退席ロジック ---
+# --- 登録・移動・退席ロジック（サイドバー） ---
 if mode == "新しく座る・移動する" and u_name and s_id:
     now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
     occupant = df_now[df_now["座席番号"] == s_id]
@@ -186,3 +180,10 @@ elif mode == "退席する" and current_members:
     if st.sidebar.button("退席", use_container_width=True):
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
+
+# --- サイドバー最下部にコンパクトなQRコード ---
+st.sidebar.markdown("---")
+app_url = "https://office-map001.streamlit.app/" 
+# サイズを 150 -> 100 に縮小
+qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(app_url)}"
+st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
