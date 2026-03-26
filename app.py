@@ -81,15 +81,15 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS
+# アニメーションCSS修正（transformの干渉を防ぐ）
 st.markdown("""
     <style>
     @keyframes blink {
-        0% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-        50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.4); }
-        100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+        0% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+        50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.3); }
+        100% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
     }
-    .blinking-dot { animation: blink 0.8s infinite; z-index: 30 !important; border: 2px solid #FFD700 !important; box-shadow: 0 0 15px #FFD700; }
+    .blinking-dot { animation: blink 0.8s infinite !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -123,12 +123,12 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画 ---
+# --- マップ描画（歪みとズレの修正版） ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
     
-    map_html = f'''<div style="position: relative; width:100%;"><img src="data:image/png;base64,{b64_string}" style="width:100%; opacity:0.8;">'''
+    map_html = f'''<div style="position: relative; width:100%;"><img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'''
     
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
@@ -140,15 +140,18 @@ if os.path.exists(FILENAME):
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         
-        map_html += f'''<div class="{dot_class}" style="position: absolute; width:0.8%; padding-top:0.8%; border-radius: 50%; 
+        # 修正ポイント: サイズを vw にして正方形を維持、transformで中心を固定
+        dot_size = "0.9vw"
+        map_html += f'''<div class="{dot_class}" style="position: absolute; 
+                        width:{dot_size}; height:{dot_size}; border-radius: 50%; 
                         top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
-                        transform:translate(-50%, -50%); z-index:10;"></div>'''
+                        transform:translate(-50%, -50%); z-index:10; box-sizing: border-box;"></div>'''
         
         if label or is_highlight:
             display_text = label if label else seat_id
-            map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 7px); 
+            map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 8px); 
                             background:rgba(0,0,0,0.7); color:white; padding:1px 3px; border-radius:2px; 
-                            transform:translate(-50%, -140%); white-space:nowrap; z-index:15;">{display_text}</div>'''
+                            transform:translate(-50%, -150%); white-space:nowrap; z-index:15;">{display_text}</div>'''
                         
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
@@ -159,7 +162,7 @@ if not df_now.empty:
     l_time = str(latest['更新日時']).split(" ")[-1]
     st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん) ／ ※2分ごとに自動更新されます")
 
-# --- 登録・移動・退席ロジック（サイドバー） ---
+# --- 登録・移動・退席ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
     now_jst = datetime.now(JST).strftime("%m/%d %H:%M")
     occupant = df_now[df_now["座席番号"] == s_id]
@@ -181,9 +184,8 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部にコンパクトなQRコード ---
+# --- サイドバー最下部QRコード ---
 st.sidebar.markdown("---")
 app_url = "https://office-map001.streamlit.app/" 
-# サイズを 150 -> 100 に縮小
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(app_url)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
