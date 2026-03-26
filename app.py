@@ -17,7 +17,7 @@ import base64
 
 st.set_page_config(layout="wide", page_title="オフィス座席マップ")
 
-FILENAME = "事務所レイアウト01.jpg"
+FILENAME = "事務所レイアウト01.png"
 DB_FILE = "seat_master.csv"
 
 def load_data():
