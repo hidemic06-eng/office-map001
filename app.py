@@ -85,18 +85,6 @@ if os.path.exists(FILENAME):
         <img src="data:image/png;base64,{b64_string}" style="width:100%; opacity:0.8;">
     '''
     
-    # --- 修正後（zoomを加えたり、表示幅を調整したりできます） ---
-    map_html = f'''
-    <div style="position: relative; width: 100%; overflow-x: auto;">
-        <img src="data:image/png;base64,{b64_string}" style="min-width: 1200px; width: 100%; opacity: 0.9;">
-    '''
-
-    # --- 【修正後】縦横比を維持して、大きく表示する設定 ---
-    map_html = f'''
-    <div style="position: relative; width: 100%; overflow-x: auto; max-width: 100vw; -webkit-overflow-scrolling: touch;">
-        <img src="data:image/png;base64,{b64_string}" style="width: auto; max-width: none; min-width: 1500px; height: auto; display: block; opacity: 0.9;">
-    '''
-    
        
     for seat_id, pos in seat_coords.items():
         occ = df_now[df_now["座席番号"] == seat_id]
