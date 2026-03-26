@@ -1,3 +1,4 @@
+streamlit
 pandas
-GitPython
+st-gsheets-connection
 qrcode[pil]
