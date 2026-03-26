@@ -7,12 +7,16 @@ import os
 import qrcode
 from io import BytesIO
 
-# 1. ページ設定（スマホでも最初からサイドバーを開く設定）
+# 1. ページ設定
 st.set_page_config(
     layout="wide", 
     page_title="オフィス座席マップ",
     initial_sidebar_state="expanded" 
 )
+
+# --- 【新規追加】自動リフレッシュ設定（30秒ごとに画面を再読込） ---
+# これにより、自分が操作しなくても他人の更新が反映されます
+st.fragment(run_every=30)(lambda: None)() 
 
 # 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -21,45 +25,34 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 FILENAME = "office_layout_with_islands.png"
 APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-# 4. 座席座標の生成（構文エラーを修正）
+# 4. 座席座標の生成
 def generate_coords():
     coords = {}
     top_gap = 1.6 
-    
-    # A-E島 (12席)
     islands_top = {"A": 18.2, "B": 23.5, "C": 28.9, "D": 34.8, "E": 40.2}
     for label, left_base in islands_top.items():
         for i in range(12):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%6)*6.6, "left": left_base - top_gap if i < 6 else left_base + top_gap}
-            
-    # F-K島 (10席)
     islands_mid = {"F": 50.4, "G": 55.9, "H": 61.2, "I": 66.7, "J": 73.8, "K": 79.2}
     for label, left_base in islands_mid.items():
         for i in range(10):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + (i%5)*6.6, "left": left_base - top_gap if i < 5 else left_base + top_gap}
-            
-    # M-R島 (8席) - 【修正済み箇所】
     islands_bottom = {"M": 50.4, "N": 55.9, "O": 61.2, "P": 66.7, "Q": 73.8, "R": 79.2}
     for label, left_base in islands_bottom.items():
         for i in range(8):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + (i%4)*6.6, "left": left_base - top_gap if i < 4 else left_base + top_gap}
-            
-    # L島 & S島
     for i in range(5): coords[f"L-{i+1}"] = {"top": 28.5 + i*6.6, "left": 83.0}
     for i in range(4): coords[f"S-{i+1}"] = {"top": 66.5 + i*6.6, "left": 83.0}
-    
-    # 特殊席
     coords["支社長席"] = {"top": 23.5, "left": 12.0}
     for i in range(5): coords[f"集中ブース-{i+1}"] = {"top": 72.5, "left": 3.2 + i*2.1}
-    
     return coords
 
 seat_coords = generate_coords()
 
-# 5. データ読み込み
+# 5. データ読み込み（ttl=0でキャッシュを無効化し、常に最新を取得）
 def load_data():
     try:
-        return conn.read(worksheet="Sheet1", ttl="0")
+        return conn.read(worksheet="Sheet1", ttl=0)
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
 
@@ -130,7 +123,7 @@ if mode == "新しく座る・移動する":
             s_id = selected_group
         else:
             raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
-            island_seats = sorted(raw_seats, key=lambda x: int(x.split('-')[1]))
+            island_seats = sorted(raw_seats, key=lambda x: int(x.split('-')[1]) if x.split('-')[1].isdigit() else 0)
             seat_display_options = []
             for s in island_seats:
                 occ = df_now[df_now["座席番号"] == s]
