@@ -20,30 +20,31 @@ FILENAME = "office_layout_with_islands.png"
 def generate_coords():
     coords = {}
     
+    # 標準のドット間隔（左右の席の広さ）
+    # AもBと同じにするため、一律 1.6 に設定
+    top_gap = 1.6 
+    
     # 1. A-E島 (12席、左右6席ずつ) の個別調整
-    # 右にズレているとのことなので、A〜Dの値を小さくして「左」へスライドさせます
-    # Eは修正不要とのことなので 40.2 のまま固定
+    # A, B, C は左へスライド（数値を減らす）
+    # D は「少しだけ右へ」とのことなので、前回の 34.2 から 34.8 へ微増
+    # E は 40.2 のまま固定
     islands_top = {
-        "A": 18.2,  # 約1.3マイナスして左へ
-        "B": 23.5,  # 約1.0マイナス
-        "C": 28.9,  # 約0.6マイナス
-        "D": 34.2,  # 約0.3マイナス
-        "E": 40.2   # 修正不要（固定）
+        "A": 18.2,  # 左へ
+        "B": 23.5,  # 左へ
+        "C": 28.9,  # 左へ
+        "D": 34.8,  # 前回の34.2から少し右(プラス)へ
+        "E": 40.2   # 固定
     }
     
     for label, left_base in islands_top.items():
-        # A島の間隔を狭め、それ以外は標準の間隔(1.6)に設定
-        current_gap = 1.2 if label == "A" else 1.6
-        
         for i in range(6): # 左側
-            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - current_gap}
+            coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(6): # 右側
-            coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + current_gap}
+            coords[f"{label}-{i+7}"] = {"top": 28.5 + i*6.6, "left": left_base + top_gap}
 
-    # --- 以下、F以降の島は前回と同じ設定 ---
+    # --- 以下、F以降の島（前回と同じ設定） ---
     islands_mid = {"F": 51.8, "G": 57.0, "H": 62.0, "I": 67.2, "J": 74.0, "K": 79.2}
     for label, left_base in islands_mid.items():
-        top_gap = 1.6
         for i in range(5):
             coords[f"{label}-{i+1}"] = {"top": 28.5 + i*6.6, "left": left_base - top_gap}
         for i in range(5):
@@ -51,7 +52,6 @@ def generate_coords():
 
     islands_bottom = {"M": 51.8, "N": 57.0, "O": 62.0, "P": 68.2, "Q": 74.2, "R": 81.2}
     for label, left_base in islands_bottom.items():
-        top_gap = 1.6
         for i in range(4):
             coords[f"{label}-{i+1}"] = {"top": 66.5 + i*6.6, "left": left_base - top_gap}
         for i in range(4):
