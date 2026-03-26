@@ -14,7 +14,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 設定 ---
 FILENAME = "事務所レイアウト01.png"
 
-# 座席座標の設定（運用・開発・ERPの各エリア）
+# 座席座標の設定
 def generate_coords():
     coords = {}
     for col in range(6):
@@ -36,7 +36,6 @@ seat_coords = generate_coords()
 # スプレッドシートから最新データを読み込み
 def load_data():
     try:
-        # worksheet名が "Sheet1" であることを前提としています
         return conn.read(worksheet="Sheet1", ttl="0")
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -64,7 +63,7 @@ if os.path.exists(FILENAME):
         # 座席のドット
         map_html += f'<div style="position: absolute; width:12px; height:12px; border-radius: 50%; top:{pos["top"]}%; left:{pos["left"]}%; background-color:{bg_color}; border:1px solid white;"></div>'
         
-        # 名前ラベル表示
+        # 名前ラベル
         if label:
             map_html += f'<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:9px; background:rgba(0,0,0,0.6); color:white; padding:1px 3px; border-radius:2px; transform:translate(-50%, -120%); white-space:nowrap;">{label}</div>'
             
@@ -86,16 +85,22 @@ if mode == "新しく座る":
     
     if st.sidebar.button("チェックイン", use_container_width=True, type="primary"):
         if u_name:
-            # 同名の既存データを削除（1人1箇所を維持）
-            new_df = df_now[df_now["担当者"] != u_name].copy()
-            # 新規行の追加
+            # 今日の日付 (MM/DD形式)
+            today_str = datetime.now().strftime("%m/%d")
+            
+            # 【重要】昨日のデータをクリアするロジック
+            # 1. 今日の日付で始まっているデータだけを残す
+            # 2. かつ、今入力した名前と違うデータだけを残す（二重登録防止）
+            new_df = df_now[(df_now["更新日時"].str.startswith(today_str)) & (df_now["担当者"] != u_name)].copy()
+            
+            # 3. 今回の登録データを新規追加
             new_row = pd.DataFrame([[datetime.now().strftime("%m/%d %H:%M"), u_name, s_id]], 
                                    columns=["更新日時", "担当者", "座席番号"])
             final_df = pd.concat([new_df, new_row], ignore_index=True)
             
             # スプレッドシート更新
             conn.update(worksheet="Sheet1", data=final_df)
-            st.success(f"{u_name}さん、登録完了！")
+            st.success(f"{u_name}さん、おはようございます！本日分として登録しました。")
             st.rerun()
         else:
             st.sidebar.error("名前を入力してください")
@@ -104,7 +109,6 @@ else: # 退席・移動する モード
     if not current_members:
         st.sidebar.info("現在、席に座っている人はいません。")
     else:
-        # リストから名前を選択
         target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
         
         if st.sidebar.button("退席（チェックアウト）", use_container_width=True):
