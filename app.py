@@ -17,7 +17,12 @@ JST = timezone(timedelta(hours=9))
 # 2. Google Sheets 接続設定
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 3. 設定
+# 3. 入力クリア用のコールバック関数 (エラー回避の鍵)
+def clear_input_callback():
+    if "u_name_input" in st.session_state:
+        st.session_state.u_name_input = ""
+
+# 4. 設定
 FILENAME = "office_layout_with_islands.png"
 
 # 座席座標の設定
@@ -105,7 +110,7 @@ s_id = None
 selected_group = "未選択"
 
 if mode == "新しく座る・移動する":
-    # 【重要】keyを指定して、後でクリアできるようにする
+    # 入力欄にkeyを設定
     u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎", key="u_name_input")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
@@ -168,7 +173,7 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- マップの「下」に最終更新情報を表示 ---
+# --- 最終更新情報の表示 ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
@@ -186,28 +191,25 @@ if mode == "新しく座る・移動する" and u_name and s_id:
         if current_occupant != u_name:
             st.sidebar.error(f"❌ {s_id} は {current_occupant} さんが使用中です。")
         else:
-            if st.sidebar.button("着席情報を更新する", use_container_width=True):
+            # on_clickにリセット関数を指定してエラー回避
+            if st.sidebar.button("着席情報を更新する", use_container_width=True, on_click=clear_input_callback):
                 new_df = df_now[df_now["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
-                # 【改善】成功時に入力欄をクリア
-                st.session_state.u_name_input = ""
                 st.rerun()
     elif not existing_user.empty:
         old_seat = existing_user.iloc[0]["座席番号"]
-        if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary"):
+        # on_clickにリセット関数を指定してエラー回避
+        if st.sidebar.button(f"🚀 {old_seat} から {s_id} へ移動", use_container_width=True, type="primary", on_click=clear_input_callback):
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
-            # 【改善】成功時に入力欄をクリア
-            st.session_state.u_name_input = ""
             st.rerun()
     else:
-        if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary"):
+        # on_clickにリセット関数を指定してエラー回避
+        if st.sidebar.button("✅ チェックイン", use_container_width=True, type="primary", on_click=clear_input_callback):
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([df_now, new_row], ignore_index=True))
-            # 【改善】成功時に入力欄をクリア
-            st.session_state.u_name_input = ""
             st.rerun()
 
 elif mode == "退席する":
