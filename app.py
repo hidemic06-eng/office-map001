@@ -26,7 +26,7 @@ def clear_input_callback():
 # 4. 設定
 FILENAME = "office_layout_with_islands.png"
 
-# 座席座標の設定（ここは以前の数値のまま）
+# 座席座標の設定
 def generate_coords():
     coords = {}
     top_gap = 1.6 
@@ -81,19 +81,19 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS
+# アニメーションCSS（transformを右下寄せに合わせる）
 st.markdown("""
     <style>
     @keyframes blink {
-        0% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
-        50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.3); }
-        100% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+        0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); }
+        50% { opacity: 0.5; transform: translate(-20%, -20%) scale(1.3); }
+        100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); }
     }
     .blinking-dot { animation: blink 0.8s infinite !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 入退室管理UI（サイドバー）
+# 入退室管理UI
 st.sidebar.header("📝 入退室・移動")
 current_members = df_now["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
@@ -123,13 +123,12 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画（座標精度 復活版） ---
+# --- マップ描画 ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
     
-    # 地図コンテナを定義
-    map_html = f'''<div style="position: relative; width:100%; max-width:1000px; margin: auto;">
+    map_html = f'''<div style="position: relative; width:100%; max-width:1200px; margin: auto;">
                    <img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'''
     
     for seat_id, pos in seat_coords.items():
@@ -142,18 +141,18 @@ if os.path.exists(FILENAME):
         dot_class = "blinking-dot" if is_highlight else ""
         dot_color = "#FFD700" if is_highlight else ("#FF4B4B" if label else "#28a745")
         
-        # サイズを % に戻し、aspect-ratio で円形を保持。位置のズレを最小化。
-        size_pct = "0.9%"
+        # サイズを大きく (1.2%)、位置を右下へオフセット (translate -20%, -20%)
+        size_pct = "1.2%"
         map_html += f'''<div class="{dot_class}" style="position: absolute; 
                         width:{size_pct}; aspect-ratio: 1 / 1; border-radius: 50%; 
                         top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
-                        transform:translate(-50%, -50%); z-index:10;"></div>'''
+                        transform:translate(-20%, -20%); z-index:10; box-shadow: 1px 1px 3px rgba(0,0,0,0.3);"></div>'''
         
         if label or is_highlight:
             display_text = label if label else seat_id
-            map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 8px); 
+            map_html += f'''<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 9px); 
                             background:rgba(0,0,0,0.7); color:white; padding:1px 3px; border-radius:2px; 
-                            transform:translate(-50%, -160%); white-space:nowrap; z-index:15;">{display_text}</div>'''
+                            transform:translate(-20%, -140%); white-space:nowrap; z-index:15;">{display_text}</div>'''
                         
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
