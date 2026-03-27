@@ -67,6 +67,7 @@ def register_and_clear():
         new_df = df_logic[df_logic["担当者"] != u_name].copy()
         new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+        # 入力をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
@@ -78,47 +79,18 @@ if is_test_env:
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 自動更新フラグメント ---
+# --- 【重要】自動更新フラグメント（地図と着席状況のみ） ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
     
+    # メイン画面側の警告（これはフラグメント内でも安全）
     if is_test_env:
         st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
 
-    # CSS: Apple風デザイン設定（ダークモード対応強化版）
-    st.markdown("""
-        <style>
-        /* 1. Apple風フォント設定 (San Francisco優先) */
-        /* あらゆるテキスト要素に強制適用 */
-        html, body, [class*="css"], .stMarkdown, .stText, h1, h2, h3, p, span, label, input {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif !important;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        /* 2. タイトルのデザイン (ダーク・ライト自動対応) */
-        h1 {
-            font-weight: 700 !important;
-            letter-spacing: -0.015em !important;
-            /* 以前の固定色設定を削除し、Streamlitのテーマに合わせる */
-            color: inherit !important; 
-            padding-top: 1rem;
-        }
-
-        /* 3. 座席図のラベルフォント (視認性アップ) */
-        div[style*="font-size:min"] {
-            font-weight: 600 !important;
-            letter-spacing: -0.01em;
-        }
-
-        /* 4. アニメーションCSS */
-        @keyframes blink { 0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } 50% { opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); } 100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } }
-        .blinking-dot { animation: blink 0.8s infinite !important; background-color: #FFD700 !important; border: 1.5px solid #FFFFFF !important; z-index: 100 !important; }
-        </style>
-        """, unsafe_allow_html=True)
-
     st.title("📍 事務所リアルタイム座席図")
 
+    # サイドバーの着席者一覧（ここも最新にしたいのでフラグメント内でサイドバーを「見る」）
     with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
         if not df_now.empty:
             df_list = df_now.copy()
@@ -132,6 +104,12 @@ def main_display(selected_group):
         else:
             st.write("着席中のメンバーはいません")
 
+    # アニメーションCSS
+    st.markdown("""<style>
+        @keyframes blink { 0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } 50% { opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); } 100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } }
+        .blinking-dot { animation: blink 0.8s infinite !important; background-color: #FFD700 !important; border: 1.5px solid #FFFFFF !important; z-index: 100 !important; }
+        </style>""", unsafe_allow_html=True)
+
     if os.path.exists(FILENAME):
         with open(FILENAME, "rb") as img_file:
             b64_string = base64.b64encode(img_file.read()).decode()
@@ -139,6 +117,7 @@ def main_display(selected_group):
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
+            # ハイライト判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
@@ -189,7 +168,7 @@ elif mode == "退席する" and current_members:
 # 地図表示実行
 main_display(selected_group)
 
-# QRコード
+# QRコード（フラグメント外）
 st.sidebar.markdown("---")
 encoded_url = urllib.parse.quote(CURRENT_URL)
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={encoded_url}"
