@@ -60,11 +60,8 @@ def load_data():
 
 # --- 登録・移動処理用のコールバック関数 ---
 def register_and_clear():
-    # 入力値をセッションから取得
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
-    
-    # 選択肢が「島」だけの場合や空の場合をケア
     s_id = s_id_raw.split('（')[0] if s_id_raw else None
     
     if u_name and s_id:
@@ -84,10 +81,16 @@ def register_and_clear():
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 【重要】自動更新フラグメント ---
+# --- 自動更新フラグメント ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
+    
+    # 【復活】テスト環境時の表示（メインエリアの最上部に出すようにしました）
+    if is_test_env:
+        st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
+        st.sidebar.warning("🛠️ テスト環境実行中")
+
     st.title("📍 事務所リアルタイム座席図")
 
     # サイドバーの着席者一覧
@@ -131,8 +134,6 @@ def main_display(selected_group):
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
-            
-            # ハイライト判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
@@ -153,7 +154,6 @@ def main_display(selected_group):
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
-    # --- 修正箇所：担当er を 担当者 に修正 ---
     if not df_now.empty:
         latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
         st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
@@ -178,7 +178,6 @@ if mode == "新しく座る・移動する":
     
     if selected_group != "未選択":
         if selected_group in special_list:
-            # 特殊席の場合はそのままseat_boxに値をセット
             st.session_state["seat_box"] = selected_group
         else:
             raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
