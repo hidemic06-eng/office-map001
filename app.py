@@ -67,9 +67,10 @@ if is_test_env:
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 自動更新フラグメント (ここからマップ表示) ---
+# --- 【重要】自動更新フラグメント (ここからマップ表示) ---
+# 引数 `selected_group` を受け取るように修正
 @st.fragment(run_every=120)
-def main_display():
+def main_display(selected_group):
     # 2分ごとに最新データを読み込み
     df_now = load_data()
     
@@ -120,8 +121,12 @@ def main_display():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
             
-            # 検索ワードに一致する場合
-            is_highlight = (search_query and label and search_query in label)
+            # --- ここを修正：検索ワード一致 OR サイドバーで島が選ばれている場合 ---
+            # 引数 `selected_group` の情報を元にハイライトを判定
+            is_highlight = (search_query and label and search_query in label) or \
+                           (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
+                           (selected_group == seat_id)
+            # -------------------------------------------------------------------
             
             dot_class = "blinking-dot" if is_highlight else ""
             dot_color = "#FF4B4B" if label else "#28a745" # 赤：着席 / 緑：空席
@@ -149,8 +154,8 @@ def main_display():
     # 同期時刻の表示（エラー回避のため st.sidebar ではなく st を使用）
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# 表示実行
-main_display()
+# 表示実行（ここでの呼び出しは、後ほどのサイドバーの選択結果 `selected_group` を渡すように変更）
+# main_display() ← これは削除
 
 # --- 入退室管理UI (リロードで入力が消えないようフラグメントの外に配置) ---
 st.sidebar.markdown("---")
@@ -159,12 +164,17 @@ df_logic = load_data() # 操作用に最新データを1回取得
 current_members = df_logic["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
+# 初期値を設定（フラグメント呼び出し用）
+selected_group = "未選択"
+
 if mode == "新しく座る・移動する":
     u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎", key="u_name_input")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
     special_list = sorted([s for s in all_seats if '-' not in s])
-    selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list)
+    
+    # ここで島の選択結果を受け取る
+    selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list, key="selected_group_input")
     
     if selected_group != "未選択":
         s_id = None
@@ -193,6 +203,10 @@ elif mode == "退席する" and current_members:
     if st.sidebar.button("退席する", use_container_width=True):
         conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
         st.rerun()
+
+# --- 💡 【重要】メイン表示の実行（引数を渡す） ---
+# サイドバーの選択結果 `selected_group` を渡して、マップ表示と連動させる
+main_display(selected_group)
 
 # --- サイドバー最下部：QRコード ---
 st.sidebar.markdown("---")
