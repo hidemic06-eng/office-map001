@@ -17,7 +17,12 @@ st.set_page_config(
 is_test_env = st.secrets.get("env", {}).get("is_test", False)
 
 # --- 【更新設定】2分ごとに自動リフレッシュ ---
-st.fragment(run_every=120)(lambda: None) 
+# 空のフラグメントを作成し、時間になったら st.rerun() を実行して全体を更新します
+@st.fragment(run_every=120)
+def auto_refresh():
+    st.rerun()
+
+auto_refresh()
 
 # 日本時間(JST)の定義
 JST = timezone(timedelta(hours=9))
@@ -62,6 +67,7 @@ seat_coords = generate_coords()
 
 def load_data():
     try:
+        # ttl=0 を指定してキャッシュを無効化し、常に最新を取得
         return conn.read(worksheet="Sheet1", ttl=0)
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -205,8 +211,7 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部：QRコード (動的生成) ---
+# --- サイドバー最下部：QRコード ---
 st.sidebar.markdown("---")
-# CURRENT_URLに基づいてQRコードを作成
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(CURRENT_URL)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
