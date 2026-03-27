@@ -31,10 +31,10 @@ FILENAME = "office_layout_with_islands.png"
 # --- URLの動的切り分け ---
 if is_test_env:
     # テスト環境(develop)のURL
-    CURRENT_URL = "https://office-map001-main.streamlit.app/"
+    CURRENT_URL = "https://office-map001-develop.streamlit.app/"
 else:
     # 本番環境(main)のURL
-    CURRENT_URL = "https://office-map001-develop.streamlit.app/"
+    CURRENT_URL = "https://office-map001-main.streamlit.app/"
 
 # 4. 座席座標の生成
 def generate_coords():
