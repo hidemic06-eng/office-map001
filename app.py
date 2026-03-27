@@ -13,6 +13,9 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
+# --- 環境判定 (Secretsから取得) ---
+is_test_env = st.secrets.get("env", {}).get("is_test", False)
+
 # --- 【更新設定】2分ごとに自動リフレッシュ ---
 st.fragment(run_every=120)(lambda: None) 
 
@@ -24,7 +27,14 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 3. 定数・初期設定
 FILENAME = "office_layout_with_islands.png"
-APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
+
+# --- URLの動的切り分け ---
+if is_test_env:
+    # テスト環境(develop)のURL
+    CURRENT_URL = "https://office-map001-develop.streamlit.app/"
+else:
+    # 本番環境(main)のURL
+    CURRENT_URL = "https://office-map001-main.streamlit.app/"
 
 # 4. 座席座標の生成
 def generate_coords():
@@ -59,6 +69,9 @@ def load_data():
 df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
+if is_test_env:
+    st.sidebar.warning("🛠️ テスト環境 (別シート接続中)")
+
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
@@ -82,7 +95,6 @@ st.sidebar.markdown("---")
 # --- メイン画面表示 ---
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS（色をゴールドで固定し、影を追加）
 st.markdown("""
     <style>
     @keyframes blink {
@@ -145,7 +157,6 @@ if os.path.exists(FILENAME):
                        (selected_group == seat_id)
 
         dot_class = "blinking-dot" if is_highlight else ""
-        # ハイライト時はクラス側で色を強制するため、ここでは通常時の色を判定
         dot_color = "#FF4B4B" if label else "#28a745"
         
         size_pct = "1.2%"
@@ -156,7 +167,6 @@ if os.path.exists(FILENAME):
         
         if label or is_highlight:
             display_text = label if label else seat_id
-            # ラベルの色も、ハイライト時は少し目立たせる
             label_bg = "rgba(255, 215, 0, 0.9)" if is_highlight else "rgba(0,0,0,0.7)"
             label_txt = "black" if is_highlight else "white"
             
@@ -195,7 +205,8 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部：QRコード ---
+# --- サイドバー最下部：QRコード (動的生成) ---
 st.sidebar.markdown("---")
-qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(APP_URL)}"
+# CURRENT_URLに基づいてQRコードを作成
+qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(CURRENT_URL)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
