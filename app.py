@@ -62,15 +62,32 @@ def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
     s_id = s_id_raw.split('（')[0] if s_id_raw else None
+    
     if u_name and s_id:
         df_logic = load_data()
-        new_df = df_logic[df_logic["担当者"] != u_name].copy()
-        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+        
+        # 1. 今日の日付文字列を取得（例: "03/27"）
+        today_str = datetime.now(JST).strftime("%m/%d")
+        
+        # 2. 「今日の日付」かつ「自分以外の名前」のデータだけを残す
+        # これにより、昨日以前のデータはすべて自動的に消去（フィルタリング）されます
+        new_df = df_logic[
+            (df_logic["更新日時"].str.startswith(today_str)) & 
+            (df_logic["担当者"] != u_name)
+        ].copy()
+        
+        # 3. 新しい登録データを作成
+        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], 
+                               columns=["更新日時", "担当者", "座席番号"])
+        
+        # 4. 合体させて保存
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+        
         # 入力をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
+            
 
 # --- サイドバー：静的な要素（フラグメント外） ---
 if is_test_env:
