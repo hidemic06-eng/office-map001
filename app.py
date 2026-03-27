@@ -60,36 +60,37 @@ def load_data():
 
 # --- 登録・移動処理用のコールバック関数 ---
 def register_and_clear():
-    # 入力値を取得
+    # 入力値をセッションから取得
     u_name = st.session_state.get("u_name_input")
-    s_id = st.session_state.get("seat_box")
-    if s_id: s_id = s_id.split('（')[0]
+    s_id_raw = st.session_state.get("seat_box")
+    
+    # 選択肢が「島」だけの場合や空の場合をケア
+    s_id = s_id_raw.split('（')[0] if s_id_raw else None
     
     if u_name and s_id:
-        # データの読み込みと更新
         df_logic = load_data()
         new_df = df_logic[df_logic["担当者"] != u_name].copy()
-        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], 
+                                columns=["更新日時", "担当者", "座席番号"])
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
         
         # 入力値をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
-        # seat_boxはisland_boxがリセットされれば自動的にリセットされます
+        if "seat_box" in st.session_state:
+            del st.session_state["seat_box"]
 
-# --- サイドバー：共通UI ---
-if is_test_env:
-    st.sidebar.warning("🛠️ テスト環境 (別シート接続中)")
-
+# --- サイドバー：検索機能 ---
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 自動更新フラグメント ---
+# --- 【重要】自動更新フラグメント ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
     st.title("📍 事務所リアルタイム座席図")
 
+    # サイドバーの着席者一覧
     with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
         if not df_now.empty:
             df_list = df_now.copy()
@@ -103,6 +104,7 @@ def main_display(selected_group):
         else:
             st.write("着席中のメンバーはいません")
 
+    # CSSアニメーション
     st.markdown("""
         <style>
         @keyframes blink {
@@ -129,12 +131,15 @@ def main_display(selected_group):
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
+            
+            # ハイライト判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
             
             dot_class = "blinking-dot" if is_highlight else ""
             dot_color = "#FF4B4B" if label else "#28a745"
+            
             map_html += f'''<div class="{dot_class}" style="position: absolute; width:1.2%; aspect-ratio: 1 / 1; border-radius: 50%; 
                             top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; 
                             transform:translate(-20%, -20%); z-index:10;"></div>'''
@@ -148,12 +153,14 @@ def main_display(selected_group):
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
+    # --- 修正箇所：担当er を 担当者 に修正 ---
     if not df_now.empty:
         latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
-        st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当er']}さん)")
+        st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
+    
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# --- 入退室管理ロジック ---
+# --- 入退室管理UI ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
@@ -171,7 +178,7 @@ if mode == "新しく座る・移動する":
     
     if selected_group != "未選択":
         if selected_group in special_list:
-            # 支社長席や集中ブース用のダミーkey
+            # 特殊席の場合はそのままseat_boxに値をセット
             st.session_state["seat_box"] = selected_group
         else:
             raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
@@ -179,7 +186,6 @@ if mode == "新しく座る・移動する":
             seat_options = [f"{s}（{'👤 ' + df_logic[df_logic['座席番号']==s].iloc[0]['担当者'] if not df_logic[df_logic['座席番号']==s].empty else '✅ 空席'}）" for s in island_seats]
             st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
         
-        # 登録ボタンにコールバック関数を紐付け
         st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary", on_click=register_and_clear)
 
 elif mode == "退席する" and current_members:
@@ -188,7 +194,7 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
         st.rerun()
 
-# メイン表示実行
+# メイン表示
 main_display(selected_group)
 
 # QRコード
