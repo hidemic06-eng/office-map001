@@ -13,6 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
+# --- 環境判定と独自の目印 (Secretsから取得) ---
+# Secretsに [env] is_test = true があればテスト環境とみなす
+is_test_env = st.secrets.get("env", {}).get("is_test", False)
+
 # --- 【更新設定】2分ごとに自動リフレッシュ ---
 st.fragment(run_every=120)(lambda: None) 
 
@@ -26,7 +30,63 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 FILENAME = "office_layout_with_islands.png"
 APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-# 4. 座席座標の生成
+# --- Apple風 & テスト環境用CSS ---
+st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;700;900&display=swap');
+
+    /* Apple風タイポグラフィ */
+    .apple-title-container {{
+        text-align: center;
+        padding: 20px 0 10px 0;
+    }}
+    .apple-subtitle {{
+        font-family: 'Noto Sans JP', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        color: #86868b;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+    }}
+    .apple-title {{
+        font-family: 'Noto Sans JP', sans-serif;
+        font-size: 42px;
+        font-weight: 900;
+        background: linear-gradient(180deg, {"#FF3B30" if is_test_env else "#1d1d1f"} 0%, #434345 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }}
+
+    /* iOS風角丸カスタマイズ */
+    .stTextInput div div div input {{ border-radius: 12px !important; }}
+    .stSelectbox div div div {{ border-radius: 12px !important; }}
+    .stButton button {{
+        border-radius: 20px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease;
+    }}
+
+    /* テスト環境時のみサイドバーの色を変える (誤操作防止) */
+    section[data-testid="stSidebar"] {{
+        background-color: {"#fff5f5" if is_test_env else "#f0f2f6"} !important;
+    }}
+
+    /* ドットのアニメーション */
+    @keyframes blink {{
+        0% {{ opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }}
+        50% {{ opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); box-shadow: 0 0 15px #FFD700; }}
+        100% {{ opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }}
+    }}
+    .blinking-dot {{ 
+        animation: blink 0.8s infinite !important; 
+        background-color: #FFD700 !important; 
+        border: 1.5px solid #FFFFFF !important;
+        z-index: 100 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# 4. 座席座標の生成 (変更なし)
 def generate_coords():
     coords = {}
     top_gap = 1.6 
@@ -59,6 +119,9 @@ def load_data():
 df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
+if is_test_env:
+    st.sidebar.warning("🛠️ テスト環境稼働中")
+
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
@@ -79,24 +142,12 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
 
 st.sidebar.markdown("---")
 
-# --- メイン画面表示 ---
-st.title("📍 事務所リアルタイム座席図")
-
-# アニメーションCSS（色をゴールドで固定し、影を追加）
-st.markdown("""
-    <style>
-    @keyframes blink {
-        0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }
-        50% { opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); box-shadow: 0 0 15px #FFD700; }
-        100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); box-shadow: 0 0 5px #FFD700; }
-    }
-    .blinking-dot { 
-        animation: blink 0.8s infinite !important; 
-        background-color: #FFD700 !important; 
-        border: 1.5px solid #FFFFFF !important;
-        z-index: 100 !important;
-    }
-    </style>
+# --- メイン画面表示 (Apple風タイトル) ---
+st.markdown(f"""
+    <div class="apple-title-container">
+        <div class="apple-subtitle">{"TEST ENVIRONMENT" if is_test_env else "Office Navigation"}</div>
+        <div class="apple-title">事務所座席図</div>
+    </div>
     """, unsafe_allow_html=True)
 
 # 入退室管理UI
@@ -129,7 +180,7 @@ if mode == "新しく座る・移動する":
             selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_display_options)
             s_id = selected_label.split('（')[0]
 
-# --- マップ描画 ---
+# --- マップ描画 (変更なし) ---
 if os.path.exists(FILENAME):
     with open(FILENAME, "rb") as img_file:
         b64_string = base64.b64encode(img_file.read()).decode()
@@ -145,7 +196,6 @@ if os.path.exists(FILENAME):
                        (selected_group == seat_id)
 
         dot_class = "blinking-dot" if is_highlight else ""
-        # ハイライト時はクラス側で色を強制するため、ここでは通常時の色を判定
         dot_color = "#FF4B4B" if label else "#28a745"
         
         size_pct = "1.2%"
@@ -156,7 +206,6 @@ if os.path.exists(FILENAME):
         
         if label or is_highlight:
             display_text = label if label else seat_id
-            # ラベルの色も、ハイライト時は少し目立たせる
             label_bg = "rgba(255, 215, 0, 0.9)" if is_highlight else "rgba(0,0,0,0.7)"
             label_txt = "black" if is_highlight else "white"
             
