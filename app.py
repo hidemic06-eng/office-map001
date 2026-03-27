@@ -14,7 +14,6 @@ st.set_page_config(
 )
 
 # --- 環境判定と独自の目印 (Secretsから取得) ---
-# Secretsに [env] is_test = true があればテスト環境とみなす
 is_test_env = st.secrets.get("env", {}).get("is_test", False)
 
 # --- 【更新設定】2分ごとに自動リフレッシュ ---
@@ -30,15 +29,21 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 FILENAME = "office_layout_with_islands.png"
 APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
 
-# --- Apple風 & テスト環境用CSS ---
+# --- ✨ Apple風 & 洗練UI CSS (修正版) ---
 st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;700;900&display=swap');
 
-    /* Apple風タイポグラフィ */
+    /* 全体のフォント統一 */
+    .stMarkdown, .stTextInput, .stSelectbox, .stButton, .stExpander {{
+        font-family: 'Noto Sans JP', sans-serif !important;
+    }}
+
+    /* Apple風タイポグラフィ (メイン画面) */
     .apple-title-container {{
         text-align: center;
         padding: 20px 0 10px 0;
+        {"margin-bottom: 10px; border-radius: 12px; border: 2px solid #FF3B30;" if is_test_env else ""}
     }}
     .apple-subtitle {{
         font-family: 'Noto Sans JP', sans-serif;
@@ -52,23 +57,65 @@ st.markdown(f"""
         font-family: 'Noto Sans JP', sans-serif;
         font-size: 42px;
         font-weight: 900;
-        background: linear-gradient(180deg, {"#FF3B30" if is_test_env else "#1d1d1f"} 0%, #434345 100%);
+        line-height: 1.1;
+        background: linear-gradient(180deg, #1d1d1f 0%, #434345 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }}
 
-    /* iOS風角丸カスタマイズ */
-    .stTextInput div div div input {{ border-radius: 12px !important; }}
-    .stSelectbox div div div {{ border-radius: 12px !important; }}
+    /* iOS風パーツカスタマイズ (サイドバー) */
+    /* 1. 入力欄・セレクトボックス (背景を白に、角丸を柔らかく) */
+    .stTextInput div div div input, .stSelectbox div div div {{
+        border-radius: 12px !important;
+        background-color: white !important;
+        color: #1d1d1f !important;
+        border: 1px solid #d1d1d6 !important;
+        padding: 10px !important;
+    }}
+    /* 2. 入力欄のラベル (文字色を濃いグレーに) */
+    .stTextInput label, .stSelectbox label, .stRadio label p {{
+        color: #1d1d1f !important;
+        font-weight: 600 !important;
+    }}
+    /* 3. ボタン (iOSアクションボタン風のカプセル型) */
     .stButton button {{
         border-radius: 20px !important;
+        background-color: #0071e3 !important; /* Apple風ブルー */
+        color: white !important;
         font-weight: 600 !important;
+        border: none !important;
         transition: all 0.2s ease;
+        width: 100% !important;
+    }}
+    .stButton button:hover {{
+        background-color: #0077ed !important;
+    }}
+    /* 4. エクスパンダー (iOSグループ化UI風) */
+    .stExpander {{
+        border-radius: 12px !important;
+        border: 1px solid #d1d1d6 !important;
+        background-color: white !important;
+    }}
+    /* 5. ラジオボタン */
+    div[data-testid="stMarkdownContainer"] p {{
+        color: #1d1d1f !important;
     }}
 
-    /* テスト環境時のみサイドバーの色を変える (誤操作防止) */
+    /* テスト環境の警告バー (iOS 18の赤い警告UI風) */
+    .test-env-alert {{
+        padding: 10px;
+        background-color: rgba(255, 59, 48, 0.1); /* 薄い赤の背景 */
+        color: #FF3B30; /* Apple System Red */
+        border-radius: 12px;
+        border: 1px solid rgba(255, 59, 48, 0.3);
+        margin-bottom: 20px;
+        font-weight: bold;
+        text-align: center;
+    }}
+
+    /* サイドバー全体の背景色 (清潔感のあるAppleグレー) */
     section[data-testid="stSidebar"] {{
-        background-color: {"#fff5f5" if is_test_env else "#f0f2f6"} !important;
+        background-color: #f5f5f7 !important;
     }}
 
     /* ドットのアニメーション */
@@ -120,7 +167,7 @@ df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
 if is_test_env:
-    st.sidebar.warning("🛠️ テスト環境稼働中")
+    st.sidebar.markdown('<div class="test-env-alert">⚠️ テスト環境稼働中</div>', unsafe_allow_html=True)
 
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
@@ -216,11 +263,23 @@ if os.path.exists(FILENAME):
     map_html += '</div>'
     st.markdown(map_html, unsafe_allow_html=True)
 
-# --- 最終更新情報 ---
+# --- 最終更新情報 (Apple風ブルーのメッセージバー) ---
 if not df_now.empty:
     latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
     l_time = str(latest['更新日時']).split(" ")[-1]
-    st.info(f"🕒 最終更新: **{l_time}** ({latest['担当者']}さん)")
+    # st.infoをCSSでiOS風のブルーのバーに
+    st.markdown(f"""
+        <style>
+        div[data-testid="stInfo"] {{
+            background-color: rgba(0, 113, 227, 0.1);
+            color: #0071e3;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 113, 227, 0.3);
+            font-weight: 600;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+    st.info(f"🕒 最終更新: {l_time} ({latest['担当者']}さん)")
 
 # --- 登録・移動・退席ロジック ---
 if mode == "新しく座る・移動する" and u_name and s_id:
@@ -232,7 +291,7 @@ if mode == "新しく座る・移動する" and u_name and s_id:
         st.sidebar.error(f"❌ {s_id} は使用中です。")
     else:
         btn_label = "🚀 座席を移動する" if not existing_user.empty else "✅ この席に座る"
-        if st.sidebar.button(btn_label, use_container_width=True, type="primary"):
+        if st.sidebar.button(btn_label, use_container_width=True):
             new_df = df_now[df_now["担当者"] != u_name].copy()
             new_row = pd.DataFrame([[now_jst, u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
             conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
@@ -240,11 +299,12 @@ if mode == "新しく座る・移動する" and u_name and s_id:
 
 elif mode == "退席する" and current_members:
     target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
-    if st.sidebar.button("退席する", use_container_width=True):
+    # 退席ボタンは「警告」なので少し目立たせる
+    if st.sidebar.button("退席する", use_container_width=True, type="secondary"):
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部：QRコード ---
+# --- サイドバー最下部：QRコード (変更なし) ---
 st.sidebar.markdown("---")
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(APP_URL)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
