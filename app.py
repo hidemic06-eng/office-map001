@@ -27,7 +27,14 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 3. 定数・初期設定
 FILENAME = "office_layout_with_islands.png"
-APP_URL = "https://office-map001-d7unukgvvdas4njkzblvyv.streamlit.app/"
+
+# --- URLの動的切り分け ---
+if is_test_env:
+    # テスト環境(develop)のURL
+    CURRENT_URL = "https://office-map001-main.streamlit.app/"
+else:
+    # 本番環境(main)のURL
+    CURRENT_URL = "https://office-map001-develop.streamlit.app/"
 
 # 4. 座席座標の生成
 def generate_coords():
@@ -62,7 +69,6 @@ def load_data():
 df_now = load_data()
 
 # --- サイドバー：検索・リスト ---
-# テスト環境の時だけ、控えめに通知
 if is_test_env:
     st.sidebar.warning("🛠️ テスト環境 (別シート接続中)")
 
@@ -87,10 +93,8 @@ with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
 st.sidebar.markdown("---")
 
 # --- メイン画面表示 ---
-# タイトルも元に戻しました
 st.title("📍 事務所リアルタイム座席図")
 
-# アニメーションCSS（元のゴールドドット）
 st.markdown("""
     <style>
     @keyframes blink {
@@ -201,7 +205,8 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_now[df_now["担当者"] != target_name])
         st.rerun()
 
-# --- サイドバー最下部：QRコード ---
+# --- サイドバー最下部：QRコード (動的生成) ---
 st.sidebar.markdown("---")
-qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(APP_URL)}"
+# CURRENT_URLに基づいてQRコードを作成
+qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={urllib.parse.quote(CURRENT_URL)}"
 st.sidebar.image(qr_url, caption="スマホで登録・確認", use_container_width=False)
