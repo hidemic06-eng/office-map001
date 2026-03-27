@@ -71,7 +71,7 @@ def register_and_clear():
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
 
-# --- サイドバー：静的要素 ---
+# --- サイドバー：静的な要素（フラグメント外） ---
 if is_test_env:
     st.sidebar.warning("🛠️ テスト環境実行中")
 
@@ -86,25 +86,28 @@ def main_display(selected_group):
     if is_test_env:
         st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
 
-    # CSS: Apple風デザイン設定
+    # CSS: Apple風デザイン設定（ダークモード対応強化版）
     st.markdown("""
         <style>
         /* 1. Apple風フォント設定 (San Francisco優先) */
-        html, body, [class*="css"], .stMarkdown {
+        /* あらゆるテキスト要素に強制適用 */
+        html, body, [class*="css"], .stMarkdown, .stText, h1, h2, h3, p, span, label, input {
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif !important;
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 2. タイトルのデザイン (Apple風の詰まった太字) */
+        /* 2. タイトルのデザイン (ダーク・ライト自動対応) */
         h1 {
             font-weight: 700 !important;
             letter-spacing: -0.015em !important;
-            color: #1d1d1f !important;
+            /* 以前の固定色設定を削除し、Streamlitのテーマに合わせる */
+            color: inherit !important; 
+            padding-top: 1rem;
         }
 
-        /* 3. 座席図のラベルフォント */
+        /* 3. 座席図のラベルフォント (視認性アップ) */
         div[style*="font-size:min"] {
-            font-weight: 500 !important;
+            font-weight: 600 !important;
             letter-spacing: -0.01em;
         }
 
@@ -155,7 +158,7 @@ def main_display(selected_group):
         st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# --- 入退室管理UI ---
+# --- 入退室管理UI（フラグメント外） ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
@@ -183,6 +186,7 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
         st.rerun()
 
+# 地図表示実行
 main_display(selected_group)
 
 # QRコード
