@@ -65,123 +65,87 @@ def register_and_clear():
     
     if u_name and s_id:
         df_logic = load_data()
+        
+        # 1. 今日の日付文字列を取得（例: "03/27"）
         today_str = datetime.now(JST).strftime("%m/%d")
-        new_df = df_logic[(df_logic["更新日時"].str.startswith(today_str)) & (df_logic["担当者"] != u_name)].copy()
-        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
+        
+        # 2. 「今日の日付」かつ「自分以外の名前」のデータだけを残す
+        # これにより、昨日以前のデータはすべて自動的に消去（フィルタリング）されます
+        new_df = df_logic[
+            (df_logic["更新日時"].str.startswith(today_str)) & 
+            (df_logic["担当者"] != u_name)
+        ].copy()
+        
+        # 3. 新しい登録データを作成
+        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], 
+                               columns=["更新日時", "担当者", "座席番号"])
+        
+        # 4. 合体させて保存
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+        
+        # 入力をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
+            
 
-# --- サイドバー：検索 ---
+# --- サイドバー：静的な要素（フラグメント外） ---
 if is_test_env:
     st.sidebar.warning("🛠️ テスト環境実行中")
+
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 自動更新フラグメント ---
+# --- 【重要】自動更新フラグメント（地図と着席状況のみ） ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
+    
+    # メイン画面側の警告（これはフラグメント内でも安全）
     if is_test_env:
-        st.warning("⚠️ 現在は **テスト環境 (develop)** です。")
+        st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
+
     st.title("📍 事務所リアルタイム座席図")
 
-    # CSS設定：常時表示しつつホバーで強調
-    st.markdown("""
-        <style>
-        .seat-container {
-            position: absolute;
-            width: 1.5%;
-            aspect-ratio: 1/1;
-            transform: translate(-50%, -50%);
-            z-index: 10;
-        }
-        .seat-dot {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            border: 1px solid white;
-            transition: transform 0.2s ease;
-        }
-        .seat-label {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translate(-50%, -140%);
-            font-size: min(1.0vw, 9px);
-            padding: 1px 4px;
-            border-radius: 2px;
-            white-space: nowrap;
-            font-weight: bold;
-            opacity: 1; /* 【重要】常時表示 */
-            transition: all 0.2s;
-            pointer-events: none;
-            z-index: 100;
-        }
-        /* ホバー時の強調設定 */
-        .seat-container:hover {
-            z-index: 500 !important; /* 隣と重なっても一番前に出す */
-        }
-        .seat-container:hover .seat-dot {
-            transform: scale(1.8);
-        }
-        .seat-container:hover .seat-label {
-            font-size: 14px !important; /* ホバー時に文字を大きく */
-            background: #000 !important;
-            color: #fff !important;
-            transform: translate(-50%, -180%);
-            z-index: 510;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-        }
-        /* 検索点滅 */
-        @keyframes blink { 0% { box-shadow: 0 0 0 0px rgba(255, 215, 0, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(255, 215, 0, 0); } 100% { box-shadow: 0 0 0 0px rgba(255, 215, 0, 0); } }
-        .blinking-dot { 
-            animation: blink 1.0s infinite !important;
-            background-color: #FFD700 !important;
-        }
-        .label-highlight {
-            background: rgba(255, 215, 0, 0.95) !important;
-            color: black !important;
-            z-index: 200;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # サイドバーの着席者一覧（ここも最新にしたいのでフラグメント内でサイドバーを「見る」）
+    with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
+        if not df_now.empty:
+            df_list = df_now.copy()
+            df_list["島"] = df_list["座席番号"].apply(lambda x: x.split('-')[0])
+            for island in sorted(df_list["島"].unique()):
+                st.markdown(f"**🔹 {island}島・エリア**")
+                members = df_list[df_list["島"] == island].sort_values("座席番号")
+                cols = st.columns(2)
+                for i, (_, row) in enumerate(members.iterrows()):
+                    with cols[i % 2]: st.caption(f"🪑{row['座席番号']}\n{row['担当者']}")
+        else:
+            st.write("着席中のメンバーはいません")
+
+    # アニメーションCSS
+    st.markdown("""<style>
+        @keyframes blink { 0% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } 50% { opacity: 0.7; transform: translate(-20%, -20%) scale(1.3); } 100% { opacity: 1; transform: translate(-20%, -20%) scale(1.0); } }
+        .blinking-dot { animation: blink 0.8s infinite !important; background-color: #FFD700 !important; border: 1.5px solid #FFFFFF !important; z-index: 100 !important; }
+        </style>""", unsafe_allow_html=True)
 
     if os.path.exists(FILENAME):
         with open(FILENAME, "rb") as img_file:
             b64_string = base64.b64encode(img_file.read()).decode()
-        
         map_html = f'<div style="position: relative; width:100%; max-width:1200px; margin: auto;"><img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'
-        
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
+            # ハイライト判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
-            
+            dot_class = "blinking-dot" if is_highlight else ""
             dot_color = "#FF4B4B" if label else "#28a745"
-            dot_class = "seat-dot blinking-dot" if is_highlight else "seat-dot"
-            highlight_class = "label-highlight" if is_highlight else ""
-            display_text = label if label else seat_id
-
+            map_html += f'<div class="{dot_class}" style="position: absolute; width:1.2%; aspect-ratio: 1 / 1; border-radius: 50%; top:{pos["top"]}%; left:{pos["left"]}%; background-color:{dot_color}; border:1px solid white; transform:translate(-20%, -20%); z-index:10;"></div>'
             if label or is_highlight:
-                map_html += f'''
-                <div class="seat-container" style="top:{pos["top"]}%; left:{pos["left"]}%;">
-                    <div class="{dot_class}" style="background-color:{dot_color};"></div>
-                    <div class="seat-label {highlight_class}" style="background:rgba(0,0,0,0.7); color:white;">{display_text}</div>
-                </div>
-                '''
-            else:
-                # 空席はドットのみ（ホバーで座席番号が出る）
-                map_html += f'''
-                <div class="seat-container" style="top:{pos["top"]}%; left:{pos["left"]}%;">
-                    <div class="{dot_class}" style="background-color:{dot_color};"></div>
-                    <div class="seat-label" style="background:rgba(0,0,0,0.7); color:white;">{seat_id}</div>
-                </div>
-                '''
-            
+                display_text = label if label else seat_id
+                label_bg = "rgba(255, 215, 0, 0.9)" if is_highlight else "rgba(0,0,0,0.7)"
+                label_txt = "black" if is_highlight else "white"
+                map_html += f'<div style="position: absolute; top:{pos["top"]}%; left:{pos["left"]}%; font-size:min(1.1vw, 9px); background:{label_bg}; color:{label_txt}; padding:1px 3px; border-radius:2px; transform:translate(-20%, -140%); white-space:nowrap; z-index:110; font-weight:bold;">{display_text}</div>'
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
@@ -190,7 +154,7 @@ def main_display(selected_group):
         st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# --- サイドバー：入退室 ---
+# --- 入退室管理UI（フラグメント外） ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
@@ -218,9 +182,10 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
         st.rerun()
 
+# 地図表示実行
 main_display(selected_group)
 
-# QRコード
+# QRコード（フラグメント外）
 st.sidebar.markdown("---")
 encoded_url = urllib.parse.quote(CURRENT_URL)
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={encoded_url}"
