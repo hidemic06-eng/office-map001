@@ -23,7 +23,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # 3. 定数・初期設定
 FILENAME = "office_layout_with_islands.png"
 
-# 環境に応じたURL設定
 if is_test_env:
     CURRENT_URL = "https://office-map001-develop.streamlit.app/"
 else:
@@ -55,7 +54,6 @@ seat_coords = generate_coords()
 
 def load_data():
     try:
-        # キャッシュを無効化(ttl=0)して最新データを取得
         return conn.read(worksheet="Sheet1", ttl=0)
     except:
         return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -67,18 +65,12 @@ if is_test_env:
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 【重要】自動更新フラグメント (ここからマップ表示) ---
-# 引数 `selected_group` を受け取るように修正
+# --- 自動更新フラグメント ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
-    # 2分ごとに最新データを読み込み
     df_now = load_data()
-    
-    # メインタイトル
     st.title("📍 事務所リアルタイム座席図")
 
-    # サイドバー内の「着席者一覧」も最新にしたいので、フラグメント内でサイドバー要素を作る
-    # (ただし、st.sidebar.captionのような「外」を書き換える命令はエラーになるので注意)
     with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
         if not df_now.empty:
             df_list = df_now.copy()
@@ -92,7 +84,7 @@ def main_display(selected_group):
         else:
             st.write("着席中のメンバーはいません")
 
-    # アニメーションCSS
+    # CSSアニメーション
     st.markdown("""
         <style>
         @keyframes blink {
@@ -109,7 +101,6 @@ def main_display(selected_group):
         </style>
         """, unsafe_allow_html=True)
 
-    # マップ描画
     if os.path.exists(FILENAME):
         with open(FILENAME, "rb") as img_file:
             b64_string = base64.b64encode(img_file.read()).decode()
@@ -121,15 +112,12 @@ def main_display(selected_group):
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
             
-            # --- ここを修正：検索ワード一致 OR サイドバーで島が選ばれている場合 ---
-            # 引数 `selected_group` の情報を元にハイライトを判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
-            # -------------------------------------------------------------------
             
             dot_class = "blinking-dot" if is_highlight else ""
-            dot_color = "#FF4B4B" if label else "#28a745" # 赤：着席 / 緑：空席
+            dot_color = "#FF4B4B" if label else "#28a745"
             
             map_html += f'''<div class="{dot_class}" style="position: absolute; 
                             width:1.2%; aspect-ratio: 1 / 1; border-radius: 50%; 
@@ -146,35 +134,29 @@ def main_display(selected_group):
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
-    # 最終更新情報（メインエリアに表示）
     if not df_now.empty:
         latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
         st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
-    
-    # 同期時刻の表示（エラー回避のため st.sidebar ではなく st を使用）
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# 表示実行（ここでの呼び出しは、後ほどのサイドバーの選択結果 `selected_group` を渡すように変更）
-# main_display() ← これは削除
-
-# --- 入退室管理UI (リロードで入力が消えないようフラグメントの外に配置) ---
+# --- 入退室管理ロジック ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
-df_logic = load_data() # 操作用に最新データを1回取得
+df_logic = load_data()
 current_members = df_logic["担当者"].unique().tolist()
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
-# 初期値を設定（フラグメント呼び出し用）
 selected_group = "未選択"
 
 if mode == "新しく座る・移動する":
+    # 名前入力のクリア用key
     u_name = st.sidebar.text_input("👤 名前を入力", placeholder="例：田中 太郎", key="u_name_input")
     all_seats = list(seat_coords.keys())
     island_list = sorted(list(set([s.split('-')[0] for s in all_seats if '-' in s])))
     special_list = sorted([s for s in all_seats if '-' not in s])
     
-    # ここで島の選択結果を受け取る
-    selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list, key="selected_group_input")
+    # 島選択のクリア用key
+    selected_group = st.sidebar.selectbox("🏝️ 島・エリアを選択", ["未選択"] + island_list + special_list, key="island_box")
     
     if selected_group != "未選択":
         s_id = None
@@ -188,14 +170,23 @@ if mode == "新しく座る・移動する":
                 occ = df_logic[df_logic["座席番号"] == s]
                 label = f"{s}（👤 {occ.iloc[0]['担当者']}）" if not occ.empty else f"{s}（✅ 空席）"
                 seat_options.append(label)
-            selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_options)
+            
+            # 座席番号のクリア用key
+            selected_label = st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
             s_id = selected_label.split('（')[0]
         
         if u_name and s_id:
             if st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary"):
+                # データを更新
                 new_df = df_logic[df_logic["担当者"] != u_name].copy()
                 new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], columns=["更新日時", "担当者", "座席番号"])
                 conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+                
+                # --- セッション状態をクリア ---
+                st.session_state["u_name_input"] = "" # 名前を空にする
+                st.session_state["island_box"] = "未選択" # 島をリセット
+                # seat_boxはisland_boxがリセットされれば自動的に消えるかリセットされます
+                
                 st.rerun()
 
 elif mode == "退席する" and current_members:
@@ -204,11 +195,10 @@ elif mode == "退席する" and current_members:
         conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
         st.rerun()
 
-# --- 💡 【重要】メイン表示の実行（引数を渡す） ---
-# サイドバーの選択結果 `selected_group` を渡して、マップ表示と連動させる
+# メイン表示実行
 main_display(selected_group)
 
-# --- サイドバー最下部：QRコード ---
+# QRコード
 st.sidebar.markdown("---")
 encoded_url = urllib.parse.quote(CURRENT_URL)
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={encoded_url}"
