@@ -7,10 +7,11 @@ import os
 import urllib.parse
 
 # 1. ページ設定
+# 1. ページ設定
 st.set_page_config(
     layout="wide", 
     page_title="オフィス座席マップ",
-    page_icon="my_logo.png",  # ここをアップロードしたファイル名に変える！
+    page_icon="📍",  # ここを好きな絵文字に変更！
     initial_sidebar_state="expanded" 
 )
 
