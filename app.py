@@ -13,6 +13,18 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
+# 左側のメニュー（ページナビゲーション）を非表示にする魔法のコード
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- 環境判定 ---
 is_test_env = st.secrets.get("env", {}).get("is_test", False)
 JST = timezone(timedelta(hours=9))

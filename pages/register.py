@@ -40,4 +40,3 @@ if st.button("✅ 登録する", use_container_width=True, type="primary"):
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
         st.success(f"{default_seat} に登録完了！")
         st.balloons()
-
