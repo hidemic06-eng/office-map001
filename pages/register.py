@@ -16,7 +16,7 @@ if is_test_env:
 else:
     st.set_page_config(
         page_title="座席チェックイン",
-        page_icon="📱",
+        page_icon="📲",
     )
 
 JST = timezone(timedelta(hours=9))
