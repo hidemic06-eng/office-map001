@@ -9,7 +9,8 @@ import urllib.parse
 # 1. ページ設定
 st.set_page_config(
     layout="wide", 
-    page_title="オフィス座席マップ",
+    page_title="オフィス座席マップ",  # ブラウザのタブ名
+    page_icon="📍",                 # ここに好きな絵文字を入れるだけ！
     initial_sidebar_state="expanded" 
 )
 
