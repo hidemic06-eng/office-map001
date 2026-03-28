@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, timezone
 from streamlit_gsheets import GSheetsConnection
 
 # ページ設定（地図なし・軽量モード）
-st.set_page_config(page_title="座席クイック登録", layout="centered")
+st.set_page_config(
+    page_title="座席チェックイン",
+    page_icon="📲",  # 登録画面なのでスマホっぽい絵文字にしてみました
+)
 
 JST = timezone(timedelta(hours=9))
 conn = st.connection("gsheets", type=GSheetsConnection)
