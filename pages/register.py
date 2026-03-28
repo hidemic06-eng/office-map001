@@ -3,11 +3,21 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from streamlit_gsheets import GSheetsConnection
 
-# ページ設定（地図なし・軽量モード）
-st.set_page_config(
-    page_title="座席チェックイン",
-    page_icon="📲",  # 登録画面なのでスマホっぽい絵文字にしてみました
-)
+# --- 環境判定 ---
+# Secretsからテストフラグを取得（設定がない場合はFalse=本番扱い）
+is_test_env = st.secrets.get("env", {}).get("is_test", False)
+
+# 1. ページ設定（環境によってタイトルとアイコンを自動切り替え）
+if is_test_env:
+    st.set_page_config(
+        page_title="（開発）チェックイン",
+        page_icon="🚧",
+    )
+else:
+    st.set_page_config(
+        page_title="座席チェックイン",
+        page_icon="📱",
+    )
 
 JST = timezone(timedelta(hours=9))
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -22,8 +32,12 @@ def load_data():
 query_params = st.query_params
 default_seat = query_params.get("seat", "未選択")
 
-# ★ 地図アプリと見分けるための大きなタイトル
-st.title("📲 座席チェックイン (QR専用)")
+# --- タイトルと警告表示 ---
+if is_test_env:
+    st.warning("⚠️ 現在は **テスト環境 (develop)** です")
+    st.title("🛠️ 座席チェックイン (テスト用)")
+else:
+    st.title("📲 座席チェックイン (QR専用)")
 
 if "saved_name" not in st.session_state:
     st.session_state["saved_name"] = ""
