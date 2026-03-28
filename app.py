@@ -6,14 +6,25 @@ import base64
 import os
 import urllib.parse
 
-# 1. ページ設定
-# 1. ページ設定
-st.set_page_config(
-    layout="wide", 
-    page_title="オフィス座席マップ",
-    page_icon="📍",  # ここを好きな絵文字に変更！
-    initial_sidebar_state="expanded" 
-)
+# --- 環境判定 ---
+is_test_env = st.secrets.get("env", {}).get("is_test", False)
+JST = timezone(timedelta(hours=9))
+
+# 1. ページ設定（フラグによって中身を自動切り替え）
+if is_test_env:
+    st.set_page_config(
+        layout="wide", 
+        page_title="【TEST】オフィス座席マップ",  # テスト用タイトル
+        page_icon="🛠️",                    # テスト用アイコン
+        initial_sidebar_state="expanded" 
+    )
+else:
+    st.set_page_config(
+        layout="wide", 
+        page_title="オフィス座席マップ",        # 本番用タイトル
+        page_icon="📍",                    # 本番用アイコン
+        initial_sidebar_state="expanded" 
+    )
 
 
 # 左側のメニュー（ページナビゲーション）を非表示にする魔法のコード
@@ -27,10 +38,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-# --- 環境判定 ---
-is_test_env = st.secrets.get("env", {}).get("is_test", False)
-JST = timezone(timedelta(hours=9))
 
 # 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
