@@ -9,10 +9,11 @@ import urllib.parse
 # 1. ページ設定
 st.set_page_config(
     layout="wide", 
-    page_title="オフィス座席マップ",  # ブラウザのタブ名
-    page_icon="📍",                 # ここに好きな絵文字を入れるだけ！
+    page_title="オフィス座席マップ",
+    page_icon="my_logo.png",  # ここをアップロードしたファイル名に変える！
     initial_sidebar_state="expanded" 
 )
+
 
 # 左側のメニュー（ページナビゲーション）を非表示にする魔法のコード
 st.markdown(
