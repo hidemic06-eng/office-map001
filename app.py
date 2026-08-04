@@ -94,7 +94,7 @@ def register_and_clear():
         # 2. 「今日の日付」かつ「自分以外の名前」のデータだけを残す
         # これにより、昨日以前のデータはすべて自動的に消去（フィルタリング）されます
         new_df = df_logic[
-            (df_logic["更新日時"].str.startswith(today_str)) & 
+            (df_logic["更新日時"].astype(str).str.startswith(today_str)) & 
             (df_logic["担当者"] != u_name)
         ].copy()
         
