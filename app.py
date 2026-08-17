@@ -177,8 +177,15 @@ def main_display(selected_group):
         st.markdown(map_html, unsafe_allow_html=True)
 
     if not df_now.empty:
-        latest = df_now.sort_values("更新日時", ascending=False).iloc[0]
-        st.info(f"🕒 最終更新: **{str(latest['更新日時']).split(' ')[-1]}** ({latest['担当者']}さん)")
+        df_sorted = df_now.copy()
+        # 更新日時を一時的に日時型に変換して正しく並び替える
+        df_sorted["datetime_tmp"] = pd.to_datetime(df_sorted["更新日時"], errors="coerce")
+        latest = df_sorted.sort_values("datetime_tmp", ascending=False).iloc[0]
+        
+        # 表示用文字列の調整
+        time_display = str(latest['更新日時']).split(' ')[-1] if ' ' in str(latest['更新日時']) else str(latest['更新日時'])
+        st.info(f"🕒 最終更新: **{time_display}** ({latest['担当者']}さん)")
+    
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
 # --- 入退室管理UI（フラグメント外） ---
