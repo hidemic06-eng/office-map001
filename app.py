@@ -1,10 +1,3 @@
-指定の条件（9:00〜20:00 の間はクリアロジックを実行しない）を反映し、修正したコードをお渡しします。
-
-### 変更点
-
-`register_and_clear()` 関数内で、**現在の時間（時）が 9〜19（つまり 9:00 〜 19:59）の間であるか判定**する処理を加えました。この時間帯（9:00〜20:00）においては日付によるフィルタリング（クリア処理）を行わず、全データをそのまま保持して登録・移動を実行するようにしています。
-
-```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, timezone
