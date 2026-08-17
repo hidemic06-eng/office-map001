@@ -1,3 +1,10 @@
+指定の条件（9:00〜20:00 の間はクリアロジックを実行しない）を反映し、修正したコードをお渡しします。
+
+### 変更点
+
+`register_and_clear()` 関数内で、**現在の時間（時）が 9〜19（つまり 9:00 〜 19:59）の間であるか判定**する処理を加えました。この時間帯（9:00〜20:00）においては日付によるフィルタリング（クリア処理）を行わず、全データをそのまま保持して登録・移動を実行するようにしています。
+
+```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -88,18 +95,23 @@ def register_and_clear():
     if u_name and s_id:
         df_logic = load_data()
         
-        # 1. 今日の日付文字列を取得（例: "03/27"）
-        today_str = datetime.now(JST).strftime("%m/%d")
+        now = datetime.now(JST)
+        today_str = now.strftime("%m/%d")
         
-        # 2. 「今日の日付」かつ「自分以外の名前」のデータだけを残す
-        # これにより、昨日以前のデータはすべて自動的に消去（フィルタリング）されます
-        new_df = df_logic[
-            (df_logic["更新日時"].astype(str).str.startswith(today_str)) & 
-            (df_logic["担当者"] != u_name)
-        ].copy()
+        # 9:00 〜 20:00 (9時〜19時台) の間はクリアロジックをスキップする
+        if 9 <= now.hour < 20:
+            # クリアは行わず、自分以外のデータのみ残す
+            new_df = df_logic[df_logic["担当者"] != u_name].copy()
+        else:
+            # 20:00 〜 翌8:59 まではクリアロジックを実行
+            # 「今日の日付」かつ「自分以外の名前」のデータだけを残す
+            new_df = df_logic[
+                (df_logic["更新日時"].astype(str).str.startswith(today_str)) & 
+                (df_logic["担当者"] != u_name)
+            ].copy()
         
         # 3. 新しい登録データを作成
-        new_row = pd.DataFrame([[datetime.now(JST).strftime("%m/%d %H:%M"), u_name, s_id]], 
+        new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), u_name, s_id]], 
                                columns=["更新日時", "担当者", "座席番号"])
         
         # 4. 合体させて保存
