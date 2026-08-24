@@ -26,7 +26,6 @@ else:
         initial_sidebar_state="expanded" 
     )
 
-
 # 左側のメニュー（ページナビゲーション）を非表示にする魔法のコード
 st.markdown(
     """
@@ -73,11 +72,16 @@ def generate_coords():
 
 seat_coords = generate_coords()
 
+# 5. データ読み込み（エラー時に安全策をとる修正）
 def load_data():
     try:
-        return conn.read(worksheet="Sheet1", ttl=0)
-    except:
-        return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+        df = conn.read(worksheet="Sheet1", ttl=0)
+        if df is None:
+            return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+        return df
+    except Exception as e:
+        # エラー時は None を返し、書き込み処理が発生しないように守る
+        return None
 
 # --- 登録コールバック ---
 def register_and_clear():
@@ -88,33 +92,36 @@ def register_and_clear():
     if u_name and s_id:
         df_logic = load_data()
         
-        now = datetime.now(JST)
-        today_str = now.strftime("%m/%d")
+        # 【安全装置】データが取得できなかった場合は上書きを中断する
+        if df_logic is None:
+            st.warning("通信エラーのため、登録処理を中断しました。もう一度お試しください。")
+            return
         
-        # 9:00 〜 20:00 (9時〜19時台) の間はクリアロジックをスキップする
+        now = datetime.now(JST)
+        
+        # 9:00 〜 20:00 (9時〜19時台) の間はクリアロジックをスキップ
         if 9 <= now.hour < 20:
-            # クリアは行わず、自分以外のデータのみ残す
+            # 自分以外のデータのみを残す（自分の重複登録をクリア）
             new_df = df_logic[df_logic["担当者"] != u_name].copy()
         else:
-            # 20:00 〜 翌8:59 まではクリアロジックを実行
-            # 「今日の日付」かつ「自分以外の名前」のデータだけを残す
+            # 20:00 〜 8:59 までは前日以前のクリアロジックを実行
+            today_str = now.strftime("%m/%d")
             new_df = df_logic[
                 (df_logic["更新日時"].astype(str).str.startswith(today_str)) & 
                 (df_logic["担当者"] != u_name)
             ].copy()
         
-        # 3. 新しい登録データを作成
+        # 新しい登録データを作成
         new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), u_name, s_id]], 
                                columns=["更新日時", "担当者", "座席番号"])
         
-        # 4. 合体させて保存
+        # 合体させて保存
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
         
         # 入力をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
-            
 
 # --- サイドバー：静的な要素（フラグメント外） ---
 if is_test_env:
@@ -128,13 +135,18 @@ search_query = st.sidebar.text_input("名前を入力", key="search_input")
 def main_display(selected_group):
     df_now = load_data()
     
-    # メイン画面側の警告（これはフラグメント内でも安全）
+    # 【安全装置】データが取れなかった場合
+    if df_now is None:
+        st.error("⚠️ データ取得に失敗しました。画面を再読み込みしてください。")
+        return
+
+    # メイン画面側の警告
     if is_test_env:
         st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
 
     st.title("📍 事務所リアルタイム座席図")
 
-    # サイドバーの着席者一覧（ここも最新にしたいのでフラグメント内でサイドバーを「見る」）
+    # サイドバーの着席者一覧
     with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
         if not df_now.empty:
             df_list = df_now.copy()
@@ -176,23 +188,23 @@ def main_display(selected_group):
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
+    # 【最終更新表示の修正】日時型に変換してからソートすることで誤表示を改善
     if not df_now.empty:
         df_sorted = df_now.copy()
-        # 更新日時を一時的に日時型に変換して正しく並び替える
         df_sorted["datetime_tmp"] = pd.to_datetime(df_sorted["更新日時"], errors="coerce")
         latest = df_sorted.sort_values("datetime_tmp", ascending=False).iloc[0]
-        
-        # 表示用文字列の調整
         time_display = str(latest['更新日時']).split(' ')[-1] if ' ' in str(latest['更新日時']) else str(latest['更新日時'])
         st.info(f"🕒 最終更新: **{time_display}** ({latest['担当者']}さん)")
-    
+        
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
 # --- 入退室管理UI（フラグメント外） ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
-current_members = df_logic["担当者"].unique().tolist()
+
+# df_logic が None でない場合のみ処理
+current_members = df_logic["担当者"].unique().tolist() if df_logic is not None else []
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
 selected_group = "未選択"
@@ -207,14 +219,17 @@ if mode == "新しく座る・移動する":
         else:
             raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
             island_seats = sorted(raw_seats, key=lambda x: int(x.split('-')[1]))
-            seat_options = [f"{s}（{'👤 ' + df_logic[df_logic['座席番号']==s].iloc[0]['担当者'] if not df_logic[df_logic['座席番号']==s].empty else '✅ 空席'}）" for s in island_seats]
+            seat_options = [f"{s}（{'👤 ' + df_logic[df_logic['座席番号']==s].iloc[0]['担当者'] if (df_logic is not None and not df_logic[df_logic['座席番号']==s].empty) else '✅ 空席'}）" for s in island_seats]
             st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
         st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary", on_click=register_and_clear)
 elif mode == "退席する" and current_members:
     target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
     if st.sidebar.button("退席する", use_container_width=True):
-        conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
-        st.rerun()
+        if df_logic is not None:
+            conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
+            st.rerun()
+        else:
+            st.sidebar.error("通信エラーのため退席処理ができません。")
 
 # 地図表示実行
 main_display(selected_group)
