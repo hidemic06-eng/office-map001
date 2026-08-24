@@ -26,7 +26,7 @@ else:
         initial_sidebar_state="expanded" 
     )
 
-# 左側のメニュー（ページナビゲーション）を非表示にする魔法のコード
+# 左側のメニュー（ページナビゲーション）を非表示にするコード
 st.markdown(
     """
     <style>
@@ -72,7 +72,7 @@ def generate_coords():
 
 seat_coords = generate_coords()
 
-# 5. データ読み込み（エラー時に安全策をとる修正）
+# 5. データ読み込み（エラー時の安全策）
 def load_data():
     try:
         df = conn.read(worksheet="Sheet1", ttl=0)
@@ -82,7 +82,7 @@ def load_data():
     except Exception:
         return None
 
-# --- 登録コールバック（クリアロジックを排除） ---
+# --- 登録コールバック（自分の重複削除のみ） ---
 def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
@@ -91,21 +91,21 @@ def register_and_clear():
     if u_name and s_id:
         df_logic = load_data()
         
-        # 【安全装置】データ取得エラー時は中断
+        # 安全装置: 通信エラー時は中断
         if df_logic is None:
             st.warning("通信エラーのため、登録処理を中断しました。もう一度お試しください。")
             return
         
         now = datetime.now(JST)
         
-        # 日付による自動クリアは行わず、自分自身の古いデータのみ削除して重複を防ぐ
+        # 自分自身の古いデータのみ削除（席移動に対応）
         new_df = df_logic[df_logic["担当者"] != u_name].copy()
         
         # 新しい登録データを作成
         new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), u_name, s_id]], 
                                columns=["更新日時", "担当者", "座席番号"])
         
-        # 合体させて保存
+        # 保存
         conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
         
         # 入力をクリア
@@ -113,7 +113,7 @@ def register_and_clear():
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
 
-# --- サイドバー：静的な要素（フラグメント外） ---
+# --- サイドバー：静的な要素 ---
 if is_test_env:
     st.sidebar.warning("🛠️ テスト環境実行中")
 
@@ -184,7 +184,7 @@ def main_display(selected_group):
         
     st.caption(f"🔄 最終同期: {datetime.now(JST).strftime('%H:%M:%S')}")
 
-# --- 入退室管理UI（フラグメント外） ---
+# --- 入退室管理UI ---
 st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
@@ -216,19 +216,28 @@ elif mode == "退席する" and current_members:
         else:
             st.sidebar.error("通信エラーのため退席処理ができません。")
 
-# --- 独立した全クリアボタン ---
+# --- 前日以前データのみクリアするボタン ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ 管理操作")
-if st.sidebar.button("🧹 座席リセット（全クリア）", use_container_width=True):
-    empty_df = pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
-    conn.update(worksheet="Sheet1", data=empty_df)
-    st.sidebar.success("座席をすべてクリアしました")
-    st.rerun()
+if st.sidebar.button("🧹 昨日の座席データを掃除", use_container_width=True):
+    df_reset = load_data()
+    if df_reset is not None and not df_reset.empty:
+        today_str = datetime.now(JST).strftime("%m/%d")
+        # 本日のデータのみ保持する
+        cleaned_df = df_reset[df_reset["更新日時"].astype(str).str.startswith(today_str)].copy()
+        
+        conn.update(worksheet="Sheet1", data=cleaned_df)
+        st.sidebar.success("前日以前のデータをクリアしました")
+        st.rerun()
+    elif df_reset is None:
+        st.sidebar.error("通信エラーのため処理できませんでした。")
+    else:
+        st.sidebar.info("クリア対象のデータがありません。")
 
 # 地図表示実行
 main_display(selected_group)
 
-# QRコード（フラグメント外）
+# QRコード
 st.sidebar.markdown("---")
 encoded_url = urllib.parse.quote(CURRENT_URL)
 qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={encoded_url}"
