@@ -79,11 +79,10 @@ def load_data():
         if df is None:
             return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
         return df
-    except Exception as e:
-        # エラー時は None を返し、書き込み処理が発生しないように守る
+    except Exception:
         return None
 
-# --- 登録コールバック ---
+# --- 登録コールバック（クリアロジックを排除） ---
 def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
@@ -92,24 +91,15 @@ def register_and_clear():
     if u_name and s_id:
         df_logic = load_data()
         
-        # 【安全装置】データが取得できなかった場合は上書きを中断する
+        # 【安全装置】データ取得エラー時は中断
         if df_logic is None:
             st.warning("通信エラーのため、登録処理を中断しました。もう一度お試しください。")
             return
         
         now = datetime.now(JST)
         
-        # 9:00 〜 20:00 (9時〜19時台) の間はクリアロジックをスキップ
-        if 9 <= now.hour < 20:
-            # 自分以外のデータのみを残す（自分の重複登録をクリア）
-            new_df = df_logic[df_logic["担当者"] != u_name].copy()
-        else:
-            # 20:00 〜 8:59 までは前日以前のクリアロジックを実行
-            today_str = now.strftime("%m/%d")
-            new_df = df_logic[
-                (df_logic["更新日時"].astype(str).str.startswith(today_str)) & 
-                (df_logic["担当者"] != u_name)
-            ].copy()
+        # 日付による自動クリアは行わず、自分自身の古いデータのみ削除して重複を防ぐ
+        new_df = df_logic[df_logic["担当者"] != u_name].copy()
         
         # 新しい登録データを作成
         new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), u_name, s_id]], 
@@ -130,17 +120,15 @@ if is_test_env:
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 【重要】自動更新フラグメント（地図と着席状況のみ） ---
+# --- 自動更新フラグメント（地図と着席状況のみ） ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
     
-    # 【安全装置】データが取れなかった場合
     if df_now is None:
         st.error("⚠️ データ取得に失敗しました。画面を再読み込みしてください。")
         return
 
-    # メイン画面側の警告
     if is_test_env:
         st.warning("⚠️ 現在は **テスト環境 (develop)** です。操作はテスト用シートに反映されます。")
 
@@ -173,7 +161,6 @@ def main_display(selected_group):
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
             label = occ.iloc[0]["担当者"] if not occ.empty else ""
-            # ハイライト判定
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
@@ -188,7 +175,6 @@ def main_display(selected_group):
         map_html += '</div>'
         st.markdown(map_html, unsafe_allow_html=True)
 
-    # 【最終更新表示の修正】日時型に変換してからソートすることで誤表示を改善
     if not df_now.empty:
         df_sorted = df_now.copy()
         df_sorted["datetime_tmp"] = pd.to_datetime(df_sorted["更新日時"], errors="coerce")
@@ -203,7 +189,6 @@ st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
 
-# df_logic が None でない場合のみ処理
 current_members = df_logic["担当者"].unique().tolist() if df_logic is not None else []
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
@@ -230,6 +215,15 @@ elif mode == "退席する" and current_members:
             st.rerun()
         else:
             st.sidebar.error("通信エラーのため退席処理ができません。")
+
+# --- 独立した全クリアボタン ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ 管理操作")
+if st.sidebar.button("🧹 座席リセット（全クリア）", use_container_width=True):
+    empty_df = pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+    conn.update(worksheet="Sheet1", data=empty_df)
+    st.sidebar.success("座席をすべてクリアしました")
+    st.rerun()
 
 # 地図表示実行
 main_display(selected_group)
