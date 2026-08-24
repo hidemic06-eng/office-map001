@@ -6,7 +6,7 @@ import base64
 import os
 import urllib.parse
 
-# --- 環境判定 ----
+# --- 環境判定 ---
 is_test_env = st.secrets.get("env", {}).get("is_test", False)
 JST = timezone(timedelta(hours=9))
 
