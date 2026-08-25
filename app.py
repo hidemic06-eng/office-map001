@@ -78,35 +78,54 @@ def load_data():
         df = conn.read(worksheet="Sheet1", ttl=0)
         if df is None:
             return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
-        return df
+        # 必要列の確認と文字列化（データ不整合を抑止）
+        for col in ["更新日時", "担当者", "座席番号"]:
+            if col not in df.columns:
+                df[col] = pd.Series(dtype='str')
+        return df.dropna(how="all")
     except Exception:
         return None
 
-# --- 登録コールバック（自分の重複削除のみ） ---
+# --- 登録コールバック（対策A: データ全滅ガード追加） ---
 def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
     s_id = s_id_raw.split('（')[0] if s_id_raw else None
     
     if u_name and s_id:
+        st.cache_data.clear()  # キャッシュクリアで最新データ参照を強制
         df_logic = load_data()
         
-        # 安全装置: 通信エラー時は中断
+        # 安全装置1: 通信エラー等で取得できなかった場合は即中断
         if df_logic is None:
             st.warning("通信エラーのため、登録処理を中断しました。もう一度お試しください。")
             return
         
+        original_count = len(df_logic)
         now = datetime.now(JST)
         
-        # 自分自身の古いデータのみ削除（席移動に対応）
-        new_df = df_logic[df_logic["担当者"] != u_name].copy()
+        # 自分自身の古いデータのみ削除（型変換して確実に突合）
+        new_df = df_logic[df_logic["担当者"].astype(str) != str(u_name)].copy()
         
         # 新しい登録データを作成
-        new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), u_name, s_id]], 
+        new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), str(u_name), str(s_id)]], 
                                columns=["更新日時", "担当者", "座席番号"])
         
+        final_df = pd.concat([new_df, new_row], ignore_index=True)
+        
+        # ★【対策A: データ全滅ガード】
+        # 元のデータが2件以上あるのに、更新後データが1件（＝自分の新規分のみ）になってしまう場合は全消去事故と判定して上書きを阻止する
+        if original_count >= 2 and len(final_df) <= 1:
+            st.error("⚠️ データ整合性エラーを検知したため全消去をブロックしました。再度お試しください。")
+            return
+        
         # 保存
-        conn.update(worksheet="Sheet1", data=pd.concat([new_df, new_row], ignore_index=True))
+        try:
+            conn.update(worksheet="Sheet1", data=final_df)
+            st.cache_data.clear()
+        except Exception as e:
+            st.error(f"シートの更新に失敗しました: {e}")
+            return
         
         # 入力をクリア
         st.session_state["u_name_input"] = ""
@@ -138,7 +157,7 @@ def main_display(selected_group):
     with st.sidebar.expander("👥 現在の着席者一覧", expanded=False):
         if not df_now.empty:
             df_list = df_now.copy()
-            df_list["島"] = df_list["座席番号"].apply(lambda x: x.split('-')[0])
+            df_list["島"] = df_list["座席番号"].apply(lambda x: str(x).split('-')[0])
             for island in sorted(df_list["島"].unique()):
                 st.markdown(f"**🔹 {island}島・エリア**")
                 members = df_list[df_list["島"] == island].sort_values("座席番号")
@@ -160,7 +179,7 @@ def main_display(selected_group):
         map_html = f'<div style="position: relative; width:100%; max-width:1200px; margin: auto;"><img src="data:image/png;base64,{b64_string}" style="width:100%; display: block; opacity:0.8;">'
         for seat_id, pos in seat_coords.items():
             occ = df_now[df_now["座席番号"] == seat_id]
-            label = occ.iloc[0]["担当者"] if not occ.empty else ""
+            label = str(occ.iloc[0]["担当者"]) if not occ.empty else ""
             is_highlight = (search_query and label and search_query in label) or \
                            (selected_group != "未選択" and seat_id.startswith(f"{selected_group}-")) or \
                            (selected_group == seat_id)
@@ -189,7 +208,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("📝 入退室・移動")
 df_logic = load_data()
 
-current_members = df_logic["担当者"].unique().tolist() if df_logic is not None else []
+current_members = df_logic["担当者"].dropna().unique().tolist() if df_logic is not None else []
 mode = st.sidebar.radio("操作を選択", ["新しく座る・移動する", "退席する"])
 
 selected_group = "未選択"
@@ -204,15 +223,22 @@ if mode == "新しく座る・移動する":
         else:
             raw_seats = [s for s in all_seats if s.startswith(f"{selected_group}-")]
             island_seats = sorted(raw_seats, key=lambda x: int(x.split('-')[1]))
-            seat_options = [f"{s}（{'👤 ' + df_logic[df_logic['座席番号']==s].iloc[0]['担当者'] if (df_logic is not None and not df_logic[df_logic['座席番号']==s].empty) else '✅ 空席'}）" for s in island_seats]
+            seat_options = [f"{s}（{'👤 ' + str(df_logic[df_logic['座席番号']==s].iloc[0]['担当者']) if (df_logic is not None and not df_logic[df_logic['座席番号']==s].empty) else '✅ 空席'}）" for s in island_seats]
             st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
         st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary", on_click=register_and_clear)
 elif mode == "退席する" and current_members:
     target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
     if st.sidebar.button("退席する", use_container_width=True):
         if df_logic is not None:
-            conn.update(worksheet="Sheet1", data=df_logic[df_logic["担当者"] != target_name])
-            st.rerun()
+            updated_df = df_logic[df_logic["担当者"].astype(str) != str(target_name)]
+            
+            # ★退席時も急激なデータ減少をガード
+            if len(df_logic) >= 3 and len(updated_df) == 0:
+                st.sidebar.error("⚠️ エラーを検知したため退席処理を中断しました。")
+            else:
+                conn.update(worksheet="Sheet1", data=updated_df)
+                st.cache_data.clear()
+                st.rerun()
         else:
             st.sidebar.error("通信エラーのため退席処理ができません。")
 
@@ -223,10 +249,10 @@ if st.sidebar.button("🧹 昨日の座席データを掃除", use_container_wid
     df_reset = load_data()
     if df_reset is not None and not df_reset.empty:
         today_str = datetime.now(JST).strftime("%m/%d")
-        # 本日のデータのみ保持する
         cleaned_df = df_reset[df_reset["更新日時"].astype(str).str.startswith(today_str)].copy()
         
         conn.update(worksheet="Sheet1", data=cleaned_df)
+        st.cache_data.clear()
         st.sidebar.success("前日以前のデータをクリアしました")
         st.rerun()
     elif df_reset is None:
