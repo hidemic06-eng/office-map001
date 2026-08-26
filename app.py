@@ -41,14 +41,21 @@ st.markdown(
 # 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# スプレッドシート操作用のヘルパー関数
+# スプレッドシート操作用のヘルパー関数（環境・バージョン自動判定）
 def get_worksheet(worksheet_name="Sheet1"):
-    client = conn._instance.client
+    instance = conn._instance
+    if hasattr(instance, "client"):
+        client = instance.client
+    elif hasattr(instance, "_client"):
+        client = instance._client
+    else:
+        client = instance
+
     spreadsheet_url_or_key = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    if spreadsheet_url_or_key.startswith("http"):
+    if str(spreadsheet_url_or_key).startswith("http"):
         return client.open_by_url(spreadsheet_url_or_key).worksheet(worksheet_name)
     else:
-        return client.open_by_key(spreadsheet_url_or_key).worksheet(worksheet_name)
+        return client.open_by_key(str(spreadsheet_url_or_key)).worksheet(worksheet_name)
 
 # 3. 定数
 FILENAME = "office_layout_with_islands.png"
