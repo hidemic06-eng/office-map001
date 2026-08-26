@@ -41,6 +41,15 @@ st.markdown(
 # 2. Google Sheets 接続
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# スプレッドシート操作用のヘルパー関数
+def get_worksheet(worksheet_name="Sheet1"):
+    client = conn._instance.client
+    spreadsheet_url_or_key = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    if spreadsheet_url_or_key.startswith("http"):
+        return client.open_by_url(spreadsheet_url_or_key).worksheet(worksheet_name)
+    else:
+        return client.open_by_key(spreadsheet_url_or_key).worksheet(worksheet_name)
+
 # 3. 定数
 FILENAME = "office_layout_with_islands.png"
 if is_test_env:
@@ -77,7 +86,6 @@ def load_data():
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # ttlを15秒に設定し、わずかな連続操作でのAPI制限を防止
             df = conn.read(worksheet="Sheet1", ttl=15)
             if df is None or df.empty:
                 return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
@@ -90,14 +98,13 @@ def load_data():
             if df.empty:
                 return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
 
-            # 最新レコード抽出
             df_latest = df.drop_duplicates(subset=["担当者"], keep="last").copy()
             df_active = df_latest[df_latest["座席番号"] != "退席"].copy()
             return df_active
 
         except Exception as e:
             if attempt < max_retries - 1:
-                time.sleep(1)  # 1秒待って再試行
+                time.sleep(1)
                 continue
             else:
                 return None
@@ -114,8 +121,7 @@ def register_and_clear():
         time_str = now.strftime("%m/%d %H:%M")
         
         try:
-            client = conn._instance
-            sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+            sheet = get_worksheet("Sheet1")
             sheet.append_row([time_str, str(u_name), str(s_id)])
             st.cache_data.clear()
         except Exception as e:
@@ -224,8 +230,7 @@ elif mode == "退席する" and current_members:
     target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
     if st.sidebar.button("退席する", use_container_width=True):
         try:
-            client = conn._instance
-            sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+            sheet = get_worksheet("Sheet1")
             now = datetime.now(JST)
             time_str = now.strftime("%m/%d %H:%M")
             
@@ -240,8 +245,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ 管理操作")
 if st.sidebar.button("🧹 昨日の座席データを掃除", use_container_width=True):
     try:
-        client = conn._instance
-        sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+        sheet = get_worksheet("Sheet1")
         df_raw = conn.read(worksheet="Sheet1", ttl=0)
         
         if df_raw is not None and not df_raw.empty:
