@@ -72,56 +72,48 @@ def generate_coords():
 
 seat_coords = generate_coords()
 
-# 5. データ読み込み（エラー時の安全策）
+# 5. データ読み込み（最新レコード抽出処理を追加）
 def load_data():
     try:
         df = conn.read(worksheet="Sheet1", ttl=0)
-        if df is None:
+        if df is None or df.empty:
             return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
-        # 必要列の確認と文字列化（データ不整合を抑止）
+        
+        # 必要列の確認と文字列化
         for col in ["更新日時", "担当者", "座席番号"]:
             if col not in df.columns:
                 df[col] = pd.Series(dtype='str')
-        return df.dropna(how="all")
+        
+        df = df.dropna(subset=["担当者", "座席番号"])
+        if df.empty:
+            return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+
+        # 各担当者の「最新の1件」だけを取得（シートの下にあるデータが最新）
+        df_latest = df.drop_duplicates(subset=["担当者"], keep="last").copy()
+        
+        # 「退席」状態の人は現在の着席マップから除外
+        df_active = df_latest[df_latest["座席番号"] != "退席"].copy()
+        
+        return df_active
     except Exception:
         return None
 
-# --- 登録コールバック（対策A: データ全滅ガード追加） ---
+# --- 登録コールバック（追記専用・全消去リスクゼロ） ---
 def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
     s_id = s_id_raw.split('（')[0] if s_id_raw else None
     
     if u_name and s_id:
-        st.cache_data.clear()  # キャッシュクリアで最新データ参照を強制
-        df_logic = load_data()
-        
-        # 安全装置1: 通信エラー等で取得できなかった場合は即中断
-        if df_logic is None:
-            st.warning("通信エラーのため、登録処理を中断しました。もう一度お試しください。")
-            return
-        
-        original_count = len(df_logic)
+        st.cache_data.clear()
         now = datetime.now(JST)
+        time_str = now.strftime("%m/%d %H:%M")
         
-        # 自分自身の古いデータのみ削除（型変換して確実に突合）
-        new_df = df_logic[df_logic["担当者"].astype(str) != str(u_name)].copy()
-        
-        # 新しい登録データを作成
-        new_row = pd.DataFrame([[now.strftime("%m/%d %H:%M"), str(u_name), str(s_id)]], 
-                               columns=["更新日時", "担当者", "座席番号"])
-        
-        final_df = pd.concat([new_df, new_row], ignore_index=True)
-        
-        # ★【対策A: データ全滅ガード】
-        # 元のデータが2件以上あるのに、更新後データが1件（＝自分の新規分のみ）になってしまう場合は全消去事故と判定して上書きを阻止する
-        if original_count >= 2 and len(final_df) <= 1:
-            st.error("⚠️ データ整合性エラーを検知したため全消去をブロックしました。再度お試しください。")
-            return
-        
-        # 保存
         try:
-            conn.update(worksheet="Sheet1", data=final_df)
+            # gspreadクライアントを取得して末尾に1行追加
+            client = conn._instance
+            sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+            sheet.append_row([time_str, str(u_name), str(s_id)])
             st.cache_data.clear()
         except Exception as e:
             st.error(f"シートの更新に失敗しました: {e}")
@@ -227,38 +219,45 @@ if mode == "新しく座る・移動する":
             st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
         st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary", on_click=register_and_clear)
 elif mode == "退席する" and current_members:
-    target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
+    target_name = st.sidebar.selectbox("👤 誰が退席しますか？", target_members := current_members)
     if st.sidebar.button("退席する", use_container_width=True):
-        if df_logic is not None:
-            updated_df = df_logic[df_logic["担当者"].astype(str) != str(target_name)]
+        try:
+            client = conn._instance
+            sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+            now = datetime.now(JST)
+            time_str = now.strftime("%m/%d %H:%M")
             
-            # ★退席時も急激なデータ減少をガード
-            if len(df_logic) >= 3 and len(updated_df) == 0:
-                st.sidebar.error("⚠️ エラーを検知したため退席処理を中断しました。")
-            else:
-                conn.update(worksheet="Sheet1", data=updated_df)
-                st.cache_data.clear()
-                st.rerun()
-        else:
-            st.sidebar.error("通信エラーのため退席処理ができません。")
+            # 「退席」として追記するだけ（行削除・置換は行わない）
+            sheet.append_row([time_str, str(target_name), "退席"])
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"退席処理に失敗しました: {e}")
 
 # --- 前日以前データのみクリアするボタン ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ 管理操作")
 if st.sidebar.button("🧹 昨日の座席データを掃除", use_container_width=True):
-    df_reset = load_data()
-    if df_reset is not None and not df_reset.empty:
-        today_str = datetime.now(JST).strftime("%m/%d")
-        cleaned_df = df_reset[df_reset["更新日時"].astype(str).str.startswith(today_str)].copy()
+    try:
+        client = conn._instance
+        sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
+        df_raw = conn.read(worksheet="Sheet1", ttl=0)
         
-        conn.update(worksheet="Sheet1", data=cleaned_df)
-        st.cache_data.clear()
-        st.sidebar.success("前日以前のデータをクリアしました")
-        st.rerun()
-    elif df_reset is None:
-        st.sidebar.error("通信エラーのため処理できませんでした。")
-    else:
-        st.sidebar.info("クリア対象のデータがありません。")
+        if df_raw is not None and not df_raw.empty:
+            today_str = datetime.now(JST).strftime("%m/%d")
+            # 本日のデータのみを残す
+            cleaned_df = df_raw[df_raw["更新日時"].astype(str).str.startswith(today_str)].copy()
+            
+            # シート全体を一度クリアして本日のデータのみ再投入
+            sheet.clear()
+            sheet.update([cleaned_df.columns.values.tolist()] + cleaned_df.values.tolist())
+            st.cache_data.clear()
+            st.sidebar.success("前日以前のデータをクリアしました")
+            st.rerun()
+        else:
+            st.sidebar.info("クリア対象のデータがありません。")
+    except Exception as e:
+        st.sidebar.error(f"掃除処理に失敗しました: {e}")
 
 # 地図表示実行
 main_display(selected_group)
