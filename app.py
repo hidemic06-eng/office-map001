@@ -5,28 +5,28 @@ from streamlit_gsheets import GSheetsConnection
 import base64
 import os
 import urllib.parse
+import time
 
 # --- 環境判定 ---
 is_test_env = st.secrets.get("env", {}).get("is_test", False)
 JST = timezone(timedelta(hours=9))
 
-# 1. ページ設定（フラグによって中身を自動切り替え）
+# 1. ページ設定
 if is_test_env:
     st.set_page_config(
         layout="wide", 
-        page_title="【TEST】オフィス座席マップ",  # テスト用タイトル
-        page_icon="🛠️",                    # テスト用アイコン
+        page_title="【TEST】オフィス座席マップ", 
+        page_icon="🛠️", 
         initial_sidebar_state="expanded" 
     )
 else:
     st.set_page_config(
         layout="wide", 
-        page_title="オフィス座席マップ",        # 本番用タイトル
-        page_icon="📍",                    # 本番用アイコン
+        page_title="オフィス座席マップ", 
+        page_icon="📍", 
         initial_sidebar_state="expanded" 
     )
 
-# 左側のメニュー（ページナビゲーション）を非表示にするコード
 st.markdown(
     """
     <style>
@@ -72,33 +72,37 @@ def generate_coords():
 
 seat_coords = generate_coords()
 
-# 5. データ読み込み（最新レコード抽出処理を追加）
+# 5. データ読み込み（リトライ処理 ＋ キャッシュ（ttl=15秒）で負荷軽減）
 def load_data():
-    try:
-        df = conn.read(worksheet="Sheet1", ttl=0)
-        if df is None or df.empty:
-            return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
-        
-        # 必要列の確認と文字列化
-        for col in ["更新日時", "担当者", "座席番号"]:
-            if col not in df.columns:
-                df[col] = pd.Series(dtype='str')
-        
-        df = df.dropna(subset=["担当者", "座席番号"])
-        if df.empty:
-            return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # ttlを15秒に設定し、わずかな連続操作でのAPI制限を防止
+            df = conn.read(worksheet="Sheet1", ttl=15)
+            if df is None or df.empty:
+                return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
+            
+            for col in ["更新日時", "担当者", "座席番号"]:
+                if col not in df.columns:
+                    df[col] = pd.Series(dtype='str')
+            
+            df = df.dropna(subset=["担当者", "座席番号"])
+            if df.empty:
+                return pd.DataFrame(columns=["更新日時", "担当者", "座席番号"])
 
-        # 各担当者の「最新の1件」だけを取得（シートの下にあるデータが最新）
-        df_latest = df.drop_duplicates(subset=["担当者"], keep="last").copy()
-        
-        # 「退席」状態の人は現在の着席マップから除外
-        df_active = df_latest[df_latest["座席番号"] != "退席"].copy()
-        
-        return df_active
-    except Exception:
-        return None
+            # 最新レコード抽出
+            df_latest = df.drop_duplicates(subset=["担当者"], keep="last").copy()
+            df_active = df_latest[df_latest["座席番号"] != "退席"].copy()
+            return df_active
 
-# --- 登録コールバック（追記専用・全消去リスクゼロ） ---
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1)  # 1秒待って再試行
+                continue
+            else:
+                return None
+
+# --- 登録コールバック ---
 def register_and_clear():
     u_name = st.session_state.get("u_name_input")
     s_id_raw = st.session_state.get("seat_box")
@@ -110,7 +114,6 @@ def register_and_clear():
         time_str = now.strftime("%m/%d %H:%M")
         
         try:
-            # gspreadクライアントを取得して末尾に1行追加
             client = conn._instance
             sheet = client.open_by_key(st.secrets["connections"]["gsheets"]["spreadsheet"]).worksheet("Sheet1")
             sheet.append_row([time_str, str(u_name), str(s_id)])
@@ -119,7 +122,6 @@ def register_and_clear():
             st.error(f"シートの更新に失敗しました: {e}")
             return
         
-        # 入力をクリア
         st.session_state["u_name_input"] = ""
         st.session_state["island_box"] = "未選択"
         if "seat_box" in st.session_state: del st.session_state["seat_box"]
@@ -131,13 +133,13 @@ if is_test_env:
 st.sidebar.header("🔍 担当者検索")
 search_query = st.sidebar.text_input("名前を入力", key="search_input")
 
-# --- 自動更新フラグメント（地図と着席状況のみ） ---
+# --- 自動更新フラグメント ---
 @st.fragment(run_every=120)
 def main_display(selected_group):
     df_now = load_data()
     
     if df_now is None:
-        st.error("⚠️ データ取得に失敗しました。画面を再読み込みしてください。")
+        st.error("⚠️ データ取得に失敗しました。時間をおいて再読み込みしてください。")
         return
 
     if is_test_env:
@@ -219,7 +221,7 @@ if mode == "新しく座る・移動する":
             st.sidebar.selectbox("📍 座席番号を選択", seat_options, key="seat_box")
         st.sidebar.button("✅ 登録・移動", use_container_width=True, type="primary", on_click=register_and_clear)
 elif mode == "退席する" and current_members:
-    target_name = st.sidebar.selectbox("👤 誰が退席しますか？", target_members := current_members)
+    target_name = st.sidebar.selectbox("👤 誰が退席しますか？", current_members)
     if st.sidebar.button("退席する", use_container_width=True):
         try:
             client = conn._instance
@@ -227,7 +229,6 @@ elif mode == "退席する" and current_members:
             now = datetime.now(JST)
             time_str = now.strftime("%m/%d %H:%M")
             
-            # 「退席」として追記するだけ（行削除・置換は行わない）
             sheet.append_row([time_str, str(target_name), "退席"])
             st.cache_data.clear()
             st.rerun()
@@ -245,10 +246,8 @@ if st.sidebar.button("🧹 昨日の座席データを掃除", use_container_wid
         
         if df_raw is not None and not df_raw.empty:
             today_str = datetime.now(JST).strftime("%m/%d")
-            # 本日のデータのみを残す
             cleaned_df = df_raw[df_raw["更新日時"].astype(str).str.startswith(today_str)].copy()
             
-            # シート全体を一度クリアして本日のデータのみ再投入
             sheet.clear()
             sheet.update([cleaned_df.columns.values.tolist()] + cleaned_df.values.tolist())
             st.cache_data.clear()
